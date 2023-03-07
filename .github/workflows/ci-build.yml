@@ -54,7 +54,7 @@ jobs:
       - name: Login to Google Cloud
         uses: google-github-actions/auth@v1
         with:
-          service_account_key: ${{ secrets.GCLOUD_AUTH }}
+          credentials_json: ${{ secrets.GCLOUD_AUTH }}
       - name: Set up GCloud SDK
         uses: google-github-actions/setup-gcloud@v1
       - name: Instrumentation Tests
