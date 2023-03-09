@@ -27,7 +27,7 @@ jobs:
           GOOGLE_SERVICES: ${{ secrets.GOOGLE_SERVICES }}
       - name: Build Application APK
         run: ./gradlew assembleDevelopmentDebug
-      - name: Rename Instrumentation APK
+      - name: Rename Application APK
         run: mv app/build/outputs/apk/development/debug/*.apk application-$RUN_QUALIFIER.apk
       - name: Upload Application APK
         uses: actions/upload-artifact@v3
@@ -106,7 +106,7 @@ jobs:
       - name: Build Instrumentation APK
         run: ./gradlew assembleDevelopmentDebugAndroidTest
       - name: Rename Instrumentation APK
-        run: ./gradlew assembleDevelopmentDebugAndroidTest
+        run: mv app/build/outputs/apk/androidTest/development/debug/*.apk instrumentation-$RUN_QUALIFIER.apk
       - name: Upload Instrumentation APK
         uses: actions/upload-artifact@v3
         with:
