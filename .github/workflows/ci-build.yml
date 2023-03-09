@@ -138,13 +138,13 @@ jobs:
         id: run-instrumentation-test
         run: . ./instrumentation-test.sh
         env:
-          APPLICATION_APK: application-$RUN_QUALIFIER.apk
-          INSTRUMENTATION_APK: instrumentation-$RUN_QUALIFIER.apk
+          APPLICATION_APK: application-${{env.RUN_QUALIFIER}}.apk
+          INSTRUMENTATION_APK: instrumentation-${{env.RUN_QUALIFIER}}.apk
           GCLOUD_BUCKET: ${{ env.GCLOUD_BUCKET }}
-          GCLOUD_BUCKET_DIRECTORY: ${{ env.RUN_QUALIFIER }}/redfin-30-en-portrait
+          GCLOUD_BUCKET_DIRECTORY: ${{env.RUN_QUALIFIER}}/redfin-30-en-portrait
           LOCAL_DIRECTORY: instrumentation-test-results
       - name: Fetch Instrumentation Test Results
-        run: gsutil cp -r gs://${{ env.GCLOUD_BUCKET }}/${{ env.RUN_QUALIFIER }} instrumentation-test-results
+        run: gsutil cp -r gs://${{env.GCLOUD_BUCKET}}/${{env.RUN_QUALIFIER}} instrumentation-test-results
       - name: Instrumentation Test Summary
         uses: test-summary/action@v2
         with:
@@ -156,4 +156,4 @@ jobs:
           path: instrumentation-test-results
           if-no-files-found: error
       - name: Assert Instrumentation Tests Success
-        run: if ${{ steps.run-instrumentation-test.outputs.test_success }} -ne 'true'; then exit 1; fi
+        run: if ${{steps.run-instrumentation-test.outputs.test_success}} -ne 'true'; then exit 1; fi
