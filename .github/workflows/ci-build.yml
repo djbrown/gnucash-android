@@ -124,6 +124,8 @@ jobs:
         uses: actions/download-artifact@v3
         with:
           name: instrumentation-apk
+      - name: Debug artifact
+        run: ls -la && ls -la application-apk
       - name: Login to Google Cloud
         uses: google-github-actions/auth@v1
         with:
