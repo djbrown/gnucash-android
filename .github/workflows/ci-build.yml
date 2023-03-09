@@ -68,7 +68,7 @@ jobs:
           LOCAL_DIRECTORY: instrumentation-test-results
       - name: Upload Instrumentation Test Results for Report
         uses: actions/upload-artifact@v3
-        if: ${{ steps.instrumentation-test.outputs.fetched_results == "true" }}
+        if: ${{ steps.instrumentation-test.outputs.fetched_results == 'true' }}
         with:
           name: instrumentation-test-results
           path: instrumentation-test-results
