@@ -28,9 +28,7 @@ jobs:
       - name: Build Application APK
         run: ./gradlew assembleDevelopmentDebug
       - name: Rename Application APK
-        run: cp app/build/outputs/apk/development/debug/*.apk application-$RUN_QUALIFIER.apk
-      - name: debug
-        run: ls -la
+        run: cp app/build/outputs/apk/development/debug/*.apk application-${{env.RUN_QUALIFIER}}.apk
       - name: Upload Application APK
         uses: actions/upload-artifact@v3
         with:
@@ -108,7 +106,7 @@ jobs:
       - name: Build Instrumentation APK
         run: ./gradlew assembleDevelopmentDebugAndroidTest
       - name: Rename Instrumentation APK
-        run: cp app/build/outputs/apk/androidTest/development/debug/*.apk instrumentation-$RUN_QUALIFIER.apk
+        run: cp app/build/outputs/apk/androidTest/development/debug/*.apk instrumentation-${{env.RUN_QUALIFIER}}.apk
       - name: Upload Instrumentation APK
         uses: actions/upload-artifact@v3
         with:
