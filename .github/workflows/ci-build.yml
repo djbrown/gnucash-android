@@ -156,6 +156,6 @@ jobs:
           path: instrumentation-test-results
           if-no-files-found: error
       - name: Assert Instrumentation Tests Success
-        run: if "$SUCCESS" != "true"; then exit 1; fi
+        run: if [ "$SUCCESS" != "true" ]; then exit 1; fi
         env:
           SUCCESS: ${{steps.run-instrumentation-test.outputs.test_success}}
