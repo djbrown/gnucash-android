@@ -154,6 +154,10 @@ jobs:
           GOOGLE_SERVICES: ${{ env.GOOGLE_SERVICES }}
       - name: Run Linter
         run: ./gradlew lintDevelopmentDebug
+      - name: Report Lint Issues
+        uses: yutailang0119/action-android-lint@v3.1.0
+        with:
+          report-path: app/build/reports/lint-results-developmentDebug.xml
 
   instrumentation-build:
     runs-on: ubuntu-latest
