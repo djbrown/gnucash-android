@@ -301,6 +301,7 @@ public class ScheduledAction extends BaseModel {
      * @return Period in milliseconds since Epoch
      * @deprecated Uses fixed values for time of months and years (which actually vary depending on number of days in month or leap year)
      */
+    @Deprecated
     public long getPeriod() {
         return mRecurrence.getPeriod();
     }

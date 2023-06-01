@@ -116,6 +116,7 @@ public class Recurrence extends BaseModel {
      * @return Milliseconds since Epoch representing the period
      * @deprecated Do not use in new code. Uses fixed period values for months and years (which have variable units of time)
      */
+    @Deprecated
     public long getPeriod() {
         long baseMillis = 0;
         switch (mPeriodType) {
