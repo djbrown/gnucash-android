@@ -47,7 +47,8 @@ public class DisableAnimationsRule implements TestRule {
                     fd;
                     is
             ) {
-                Log.d(DisableAnimationsRule.class.getSimpleName(), new String(is.readAllBytes()));
+                String commandOutput = new String(is.readBytes());
+                Log.d(DisableAnimationsRule.class.getSimpleName(), commandOutput);
             }
         }
     }
