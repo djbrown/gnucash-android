@@ -1,25 +1,20 @@
 package org.gnucash.android.test.ui.util;
 
 import android.app.UiAutomation;
-import android.net.TrafficStats;
 import android.os.Build;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
 
 import androidx.test.platform.app.InstrumentationRegistry;
 
-import org.gnucash.android.test.ui.TransactionsActivityTest;
-import org.gnucash.android.ui.transaction.TransactionsActivity;
 import org.junit.rules.TestRule;
 import org.junit.runner.Description;
 import org.junit.runners.model.Statement;
 
 import java.io.BufferedInputStream;
-import java.io.BufferedReader;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Arrays;
 import java.util.List;
 
 /**
