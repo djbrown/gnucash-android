@@ -42,7 +42,8 @@ public class DisableAnimationsRule implements TestRule {
                     fd;
                     is
             ) {
-                String commandOutput = new String(is.readBytes());
+                String commandOutput = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))
+                        .lines().collect(Collectors.joining("\n"));
                 Log.d(DisableAnimationsRule.class.getSimpleName(), commandOutput);
             }
         }
