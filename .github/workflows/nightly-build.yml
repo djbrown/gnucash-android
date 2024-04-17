@@ -1,4 +1,4 @@
-name: Instrumentation Test
+name: Nightly Build
 
 on:
   workflow_run:
@@ -69,13 +69,10 @@ jobs:
         uses: test-summary/action@v2
         with:
           paths: instrumentation-test-results/test_result_*.xml
-      - name: Upload Instrumentation Test Results for Report
-        uses: actions/upload-artifact@v3
+      - name: Instrumentation Test Report ${{ matrix.device_name }}
+        uses: dorny/test-reporter@v1
         with:
-          name: instrumentation-test-results-${{ matrix.device_name }}
-          path: instrumentation-test-results/test_result_*.xml
-          if-no-files-found: error
-      - name: Assert Instrumentation Tests Success
-        run: if [ "$SUCCESS" != "true" ]; then exit 1; fi
-        env:
-          SUCCESS: ${{ steps.run-instrumentation-test.outputs.test_success }}
+          artifact: instrumentation-test-results-${{ matrix.device_name }}
+          name: Instrumentation Test Report ${{ matrix.device_name }}
+          path: test_result_*.xml
+          reporter: java-junit
