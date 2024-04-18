@@ -13,6 +13,10 @@ env:
   GCLOUD_WORKLOAD_IDENTITY_PROVIDER: projects/679335683580/locations/global/workloadIdentityPools/github-main-testing-pool/providers/github
 
 jobs:
+  ci-build:
+    - name: CI Build
+      uses: ./.github/workflows/ci-build
+
   instrumentation-test:
     strategy:
       fail-fast: false
