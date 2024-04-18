@@ -35,6 +35,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      checks: write
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
