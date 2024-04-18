@@ -14,8 +14,10 @@ env:
 
 jobs:
   ci-build:
-    - name: CI Build
-      uses: ./.github/workflows/ci-build
+    runs-on: ubuntu-latest
+    steps:
+      - name: CI Build
+        uses: ./.github/workflows/ci-build
 
   instrumentation-test:
     strategy:
