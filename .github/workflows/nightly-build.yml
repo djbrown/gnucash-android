@@ -19,7 +19,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
       - name: CI Build
-        uses: ./.github/workflows/ci-build
+        uses: ./.github/workflows/ci-build.yml
 
   instrumentation-test:
     strategy:
