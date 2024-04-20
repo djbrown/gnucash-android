@@ -18,7 +18,7 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
       - name: Checkout Code for Annotations
         uses: actions/checkout@v4
-      - run: ls
+      - run: pwd && ls -lisa && ls ZEST-*.xml
       - name: Unit Test Report
         uses: dorny/test-reporter@v1
         with:
