@@ -5,6 +5,7 @@ on:
     workflows: ["CI Build"]
     types:
       - completed
+  workflow_call:
 
 jobs:
   report:
