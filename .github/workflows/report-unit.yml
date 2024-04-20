@@ -18,6 +18,7 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
       - name: Checkout Code for Annotations
         uses: actions/checkout@v4
+      - run: ls
       - name: Unit Test Report
         uses: dorny/test-reporter@v1
         with:
