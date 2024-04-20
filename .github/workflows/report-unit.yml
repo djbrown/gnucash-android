@@ -10,10 +10,13 @@ jobs:
   report:
     runs-on: ubuntu-latest
     steps:
+      - name: Download Unit Test Results # see https://github.com/dorny/test-reporter/issues/363
+        uses: actions/download-artifact@v4 # https://github.com/dorny/test-reporter/issues/363
+        with:
+          name: unit-test-results
       - name: Unit Test Report
         uses: dorny/test-reporter@v1
         with:
-          artifact: unit-test-results
           name: Unit Test Report
           path: TEST-*.xml
           reporter: java-junit

@@ -16,6 +16,10 @@ jobs:
   ci-build:
     uses: ./.github/workflows/ci-build.yml
 
+  report-unit:
+    uses: ./.github/workflows/report-unit.yml
+    needs: ci-build
+  
   instrumentation-test:
     needs: ci-build
     strategy:
