@@ -19,7 +19,6 @@ jobs:
           name: unit-test-results
           github-token: ${{ github.token }}
           run-id: ${{ github.event.workflow_run.id }}
-      - run: pwd && ls -lisa && ls TEST-*.xml
       - name: Unit Test Report
         uses: dorny/test-reporter@v1
         with:
