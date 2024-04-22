@@ -18,7 +18,7 @@ jobs:
         with:
           name: unit-test-results
           github-token: ${{ github.token }}
-          run-id: ${{ github.event.workflow_run.id }}
+          run-id: ${{ github.event.workflow_run.id || github.run_id }}
       - name: Unit Test Report
         uses: dorny/test-reporter@v1
         with:
