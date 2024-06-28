@@ -17,6 +17,7 @@
 package org.gnucash.android.ui.export;
 
 import static org.gnucash.android.app.IntentExtKt.takePersistableUriPermission;
+import static org.gnucash.android.util.ContentExtKt.getDocumentName;
 
 import android.app.Activity;
 import android.content.Context;
@@ -25,6 +26,8 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
+import android.text.TextUtils;
+import android.text.format.DateUtils;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -42,6 +45,8 @@ import android.widget.RadioButton;
 import android.widget.Spinner;
 import android.widget.TextView;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SwitchCompat;
@@ -73,19 +78,17 @@ import org.gnucash.android.ui.settings.dialog.OwnCloudDialogFragment;
 import org.gnucash.android.ui.transaction.TransactionFormFragment;
 import org.gnucash.android.ui.util.RecurrenceParser;
 import org.gnucash.android.ui.util.RecurrenceViewClickListener;
+import org.gnucash.android.util.ContentExtKt;
 import org.gnucash.android.util.PreferencesHelper;
 import org.gnucash.android.util.TimestampHelper;
 
 import java.sql.Timestamp;
-import java.text.ParseException;
 import java.util.Calendar;
-import java.util.Date;
 import java.util.GregorianCalendar;
 
 import butterknife.BindView;
 import butterknife.ButterKnife;
 import timber.log.Timber;
-
 
 /**
  * Dialog fragment for exporting accounts and transactions in various formats
@@ -259,14 +262,13 @@ public class ExportFormFragment extends Fragment implements
     }
 
     @Override
-    public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
-        inflater.inflate(R.menu.default_save_actions, menu);
-        MenuItem menuItem = menu.findItem(R.id.menu_save);
-        menuItem.setTitle(R.string.btn_export);
+    public void onCreateOptionsMenu(@NonNull Menu menu, @NonNull MenuInflater inflater) {
+        super.onCreateOptionsMenu(menu, inflater);
+        inflater.inflate(R.menu.export_actions, menu);
     }
 
     @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         switch (item.getItemId()) {
             case R.id.menu_save:
                 startExport();
@@ -326,7 +328,7 @@ public class ExportFormFragment extends Fragment implements
         }
 
         Timber.i("Commencing async export of transactions");
-        new ExportAsyncTask(requireContext(), GnuCashApplication.getActiveDb()).execute(exportParameters);
+        new ExportAsyncTask(requireActivity(), GnuCashApplication.getActiveBookUID()).execute(exportParameters);
 
         if (mRecurrenceRule != null) {
             ScheduledAction scheduledAction = new ScheduledAction(ScheduledAction.ActionType.BACKUP);
@@ -366,10 +368,7 @@ public class ExportFormFragment extends Fragment implements
                         mExportParams.setExportTarget(ExportParams.ExportTarget.URI);
                         mRecurrenceOptionsView.setVisibility(View.VISIBLE);
                         Uri exportUri = mExportParams.getExportLocation();
-                        if (exportUri != null)
-                            setExportUriText(exportUri.toString());
-                        else
-                            setExportUriText(null);
+                        setExportUri(exportUri);
                         break;
                     case 1: //DROPBOX
                         setExportUriText(getString(R.string.label_dropbox_export_destination));
@@ -382,13 +381,13 @@ public class ExportFormFragment extends Fragment implements
                         }
                         break;
                     case 2: //OwnCloud
-                        setExportUriText(null);
+                        setExportUri(null);
                         mRecurrenceOptionsView.setVisibility(View.VISIBLE);
                         mExportParams.setExportTarget(ExportParams.ExportTarget.OWNCLOUD);
                         if (!(PreferenceManager.getDefaultSharedPreferences(getActivity())
                                 .getBoolean(getString(R.string.key_owncloud_sync), false))) {
                             OwnCloudDialogFragment ocDialog = OwnCloudDialogFragment.newInstance(null);
-                            ocDialog.show(getChildFragmentManager(), "ownCloud dialog");
+                            ocDialog.show(getParentFragmentManager(), "ownCloud dialog");
                         }
                         break;
                     case 3: //Share File
@@ -415,11 +414,10 @@ public class ExportFormFragment extends Fragment implements
 
         //**************** export start time bindings ******************
         Timestamp timestamp = PreferencesHelper.getLastExportTime();
-        mExportStartCalendar.setTimeInMillis(timestamp.getTime());
-
-        final Date date = new Date(timestamp.getTime());
-        mExportStartDate.setText(TransactionFormFragment.DATE_FORMATTER.format(date));
-        mExportStartTime.setText(TransactionFormFragment.TIME_FORMATTER.format(date));
+        final long date = timestamp.getTime() - DateUtils.WEEK_IN_MILLIS;
+        mExportStartCalendar.setTimeInMillis(date);
+        mExportStartDate.setText(TransactionFormFragment.DATE_FORMATTER.print(date));
+        mExportStartTime.setText(TransactionFormFragment.TIME_FORMATTER.print(date));
 
         mExportStartDate.setOnClickListener(new View.OnClickListener() {
 
@@ -427,9 +425,8 @@ public class ExportFormFragment extends Fragment implements
             public void onClick(View v) {
                 long dateMillis = 0;
                 try {
-                    Date date = TransactionFormFragment.DATE_FORMATTER.parse(mExportStartDate.getText().toString());
-                    dateMillis = date.getTime();
-                } catch (ParseException e) {
+                    dateMillis = TransactionFormFragment.DATE_FORMATTER.parseMillis(mExportStartDate.getText().toString());
+                } catch (IllegalArgumentException e) {
                     Timber.e(e, "Error converting input time to Date object");
                 }
                 Calendar calendar = Calendar.getInstance();
@@ -451,12 +448,10 @@ public class ExportFormFragment extends Fragment implements
             public void onClick(View v) {
                 long timeMillis = 0;
                 try {
-                    Date date = TransactionFormFragment.TIME_FORMATTER.parse(mExportStartTime.getText().toString());
-                    timeMillis = date.getTime();
-                } catch (ParseException e) {
+                    timeMillis = TransactionFormFragment.TIME_FORMATTER.parseMillis(mExportStartTime.getText().toString());
+                } catch (IllegalArgumentException e) {
                     Timber.e(e, "Error converting input time to Date object");
                 }
-
                 Calendar calendar = Calendar.getInstance();
                 calendar.setTimeInMillis(timeMillis);
 
@@ -542,8 +537,8 @@ public class ExportFormFragment extends Fragment implements
      *
      * @param filepath Path to export file. If {@code null}, the view will be hidden and nothing displayed
      */
-    private void setExportUriText(String filepath) {
-        if (filepath == null) {
+    private void setExportUriText(@Nullable String filepath) {
+        if (TextUtils.isEmpty(filepath)) {
             mTargetUriTextView.setVisibility(View.GONE);
             mTargetUriTextView.setText("");
         } else {
@@ -553,14 +548,29 @@ public class ExportFormFragment extends Fragment implements
     }
 
     /**
+     * Display the file path of the file where the export will be saved
+     *
+     * @param uri URI to export file. If {@code null}, the view will be hidden and nothing displayed
+     */
+    private void setExportUri(@Nullable Uri uri) {
+        if (uri == null) {
+            setExportUriText("");
+        } else {
+            setExportUriText(getDocumentName(uri, getContext()));
+        }
+    }
+
+    /**
      * Open a chooser for user to pick a file to export to
      */
     private void selectExportFile() {
-        Intent createIntent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
-        createIntent.setType("*/*").addCategory(Intent.CATEGORY_OPENABLE);
         String bookName = BooksDbAdapter.getInstance().getActiveBookDisplayName();
         String filename = Exporter.buildExportFilename(mExportParams.getExportFormat(), bookName);
-        createIntent.putExtra(Intent.EXTRA_TITLE, filename);
+
+        Intent createIntent = new Intent(Intent.ACTION_CREATE_DOCUMENT)
+            .setType("*/*")
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .putExtra(Intent.EXTRA_TITLE, filename);
         startActivityForResult(createIntent, REQUEST_EXPORT_FILE);
     }
 
@@ -596,13 +606,9 @@ public class ExportFormFragment extends Fragment implements
                         takePersistableUriPermission(requireContext(), data);
                         Uri location = data.getData();
                         mExportParams.setExportLocation(location);
-                        if (location != null) {
-                            setExportUriText(location.toString());
-                        } else {
-                            setExportUriText(null);
-                        }
+                        setExportUri(location);
                     } else {
-                        setExportUriText(null);
+                        setExportUri(null);
                     }
 
                     if (mExportStarted)
@@ -615,7 +621,7 @@ public class ExportFormFragment extends Fragment implements
     @Override
     public void onDateSet(CalendarDatePickerDialogFragment dialog, int year, int monthOfYear, int dayOfMonth) {
         Calendar cal = new GregorianCalendar(year, monthOfYear, dayOfMonth);
-        mExportStartDate.setText(TransactionFormFragment.DATE_FORMATTER.format(cal.getTime()));
+        mExportStartDate.setText(TransactionFormFragment.DATE_FORMATTER.print(cal.getTimeInMillis()));
         mExportStartCalendar.set(Calendar.YEAR, year);
         mExportStartCalendar.set(Calendar.MONTH, monthOfYear);
         mExportStartCalendar.set(Calendar.DAY_OF_MONTH, dayOfMonth);
@@ -624,7 +630,7 @@ public class ExportFormFragment extends Fragment implements
     @Override
     public void onTimeSet(RadialTimePickerDialogFragment dialog, int hourOfDay, int minute) {
         Calendar cal = new GregorianCalendar(0, 0, 0, hourOfDay, minute);
-        mExportStartTime.setText(TransactionFormFragment.TIME_FORMATTER.format(cal.getTime()));
+        mExportStartTime.setText(TransactionFormFragment.TIME_FORMATTER.print(cal.getTimeInMillis()));
         mExportStartCalendar.set(Calendar.HOUR_OF_DAY, hourOfDay);
         mExportStartCalendar.set(Calendar.MINUTE, minute);
     }

@@ -16,11 +16,15 @@
 package org.gnucash.android.model
 
 import android.graphics.Color
+import androidx.annotation.ColorInt
+import java.sql.Timestamp
 import org.gnucash.android.BuildConfig
 import org.gnucash.android.export.ofx.OfxHelper
+import org.gnucash.android.util.NotSet
+import org.gnucash.android.util.formatHexRGB
+import org.gnucash.android.util.parseColor
 import org.w3c.dom.Document
 import org.w3c.dom.Element
-import java.sql.Timestamp
 
 /**
  * An account represents a transaction account in with [Transaction]s may be recorded
@@ -56,7 +60,7 @@ class Account : BaseModel {
     /**
      * Account description
      */
-    var description = ""
+    var description: String? = ""
 
     /**
      * Commodity used by this account
@@ -77,7 +81,7 @@ class Account : BaseModel {
     /**
      * Account UID of the parent account. Can be null
      */
-    private var _parentAccountUID: String? = null
+    var parentUID: String? = null
 
     /**
      * Save UID of a default account for transfers.
@@ -90,11 +94,6 @@ class Account : BaseModel {
      * These accounts cannot have transactions
      */
     private var _isPlaceholderAccount = false
-
-    /**
-     * Account color field in hex format #rrggbb
-     */
-    private var _color = DEFAULT_COLOR
 
     /**
      * `true` if this account is flagged as a favorite account, `false` if not
@@ -145,20 +144,8 @@ class Account : BaseModel {
      * @param transaction [Transaction] to be added to the account
      */
     fun addTransaction(transaction: Transaction) {
-        transaction.commodity = _commodity!!
+        transaction.commodity = commodity
         _transactionsList.add(transaction)
-    }
-
-    /**
-     * Sets a list of transactions for this account.
-     * Overrides any previous transactions with those in the list.
-     * The account UID and currency of the transactions will be set to the unique ID
-     * and currency of the account respectively
-     *
-     * @param transactionsList List of [Transaction]s to be set.
-     */
-    fun setTransactions(transactionsList: MutableList<Transaction>) {
-        _transactionsList = transactionsList
     }
 
     /**
@@ -166,8 +153,19 @@ class Account : BaseModel {
      *
      * @return Array list of transactions for the account
      */
-    val transactions: List<Transaction>
+    var transactions: List<Transaction>
         get() = _transactionsList
+        /**
+         * Sets a list of transactions for this account.
+         * Overrides any previous transactions with those in the list.
+         * The account UID and currency of the transactions will be set to the unique ID
+         * and currency of the account respectively
+         *
+         * @param value List of [Transaction]s to be set.
+         */
+        set(value) {
+            _transactionsList = value.toMutableList()
+        }
 
     /**
      * Returns the number of transactions in this account
@@ -185,7 +183,7 @@ class Account : BaseModel {
      */
     val balance: Money
         get() {
-            var balance = Money.createZeroInstance(_commodity!!.currencyCode)
+            var balance = Money.createZeroInstance(commodity.currencyCode)
             for (transaction in _transactionsList) {
                 balance = balance.plus(transaction.getBalance(uID!!))
             }
@@ -195,18 +193,15 @@ class Account : BaseModel {
     /**
      * The color of the account.
      */
-    var color: Int
-        get() = _color
+    @ColorInt
+    var color: Int = DEFAULT_COLOR
         /**
-         * Sets the color of the account.
+         * Sets the opaque color of the account.
          *
-         * @param color Color as an int as returned by [Color].
-         * @throws java.lang.IllegalArgumentException if the color is transparent,
-         * which is not supported.
+         * @param value Color as an int as returned by [Color].
          */
-        set(color) {
-            require(Color.alpha(color) >= 255) { "Transparent colors are not supported: $color" }
-            _color = color
+        set(value) {
+            field = (value and maskRGB) or maskOpaque
         }
 
     /**
@@ -215,7 +210,7 @@ class Account : BaseModel {
      * @return Hex color of the account
      */
     val colorHexString: String
-        get() = String.format("#%06X", 0xFFFFFF and _color)
+        get() = color.formatHexRGB()
 
     /**
      * Sets the color of the account.
@@ -224,9 +219,12 @@ class Account : BaseModel {
      * @throws java.lang.IllegalArgumentException if the color code is not properly formatted or
      * the color is transparent.
      */
-    //TODO: Allow use of #aarrggbb format as well
     fun setColor(colorCode: String) {
-        color = Color.parseColor(colorCode)
+        if (colorCode == NotSet) {
+            color = DEFAULT_COLOR
+            return
+        }
+        color = parseColor(colorCode) ?: DEFAULT_COLOR
     }
 
     //todo: should we also change commodity of transactions? Transactions can have splits from different accounts
@@ -238,24 +236,6 @@ class Account : BaseModel {
         set(value) {
             _commodity = value
         }
-
-    /**
-     * Sets the Unique Account Identifier of the parent account
-     *
-     * @param parentUID String Unique ID of parent account
-     */
-    fun setParentUID(parentUID: String?) {
-        _parentAccountUID = parentUID
-    }
-
-    /**
-     * Returns the Unique Account Identifier of the parent account
-     *
-     * @return String Unique ID of parent account
-     */
-    fun getParentUID(): String? {
-        return _parentAccountUID
-    }
 
     /**
      * Returns `true` if this account is a placeholder account, `false` otherwise.
@@ -325,7 +305,7 @@ class Account : BaseModel {
      */
     fun toOfx(doc: Document, parent: Element, exportStartTime: Timestamp?) {
         val currency = doc.createElement(OfxHelper.TAG_CURRENCY_DEF)
-        currency.appendChild(doc.createTextNode(_commodity!!.currencyCode))
+        currency.appendChild(doc.createTextNode(commodity.currencyCode))
 
         //================= BEGIN BANK ACCOUNT INFO (BANKACCTFROM) =================================
         val bankId = doc.createElement(OfxHelper.TAG_BANK_ID)
@@ -395,20 +375,26 @@ class Account : BaseModel {
 
         /**
          * Default color, if not set explicitly through [.setColor].
+         * @see https://github.com/Gnucash/gnucash/blob/stable/gnucash/gnome-utils/dialog-account.c
          */
         // TODO: get it from a theme value?
-        const val DEFAULT_COLOR = Color.LTGRAY
+        @ColorInt
+        @JvmField
+        val DEFAULT_COLOR = Color.rgb(237,236,235)
 
         /**
          * An extra key for passing the currency code (according ISO 4217) in an intent
          */
-        const val EXTRA_CURRENCY_CODE = "org.gnucash.android.extra.currency_code"
+        const val EXTRA_CURRENCY_CODE = "${BuildConfig.APPLICATION_ID}.extra.currency_code"
 
         /**
          * Extra key for passing the unique ID of the parent account when creating a
          * new account using Intents
          */
-        const val EXTRA_PARENT_UID = "org.gnucash.android.extra.parent_uid"
+        const val EXTRA_PARENT_UID = "${BuildConfig.APPLICATION_ID}.extra.parent_uid"
+
+        private const val maskRGB: Int = 0xFFFFFF
+        private const val maskOpaque: Int = 0xFF000000.toInt()
 
         /**
          * Maps the `accountType` to the corresponding account type.
@@ -422,10 +408,19 @@ class Account : BaseModel {
          */
         fun convertToOfxAccountType(accountType: AccountType?): OfxAccountType {
             return when (accountType) {
-                AccountType.CREDIT, AccountType.LIABILITY -> OfxAccountType.CREDITLINE
-                AccountType.CASH, AccountType.INCOME, AccountType.EXPENSE, AccountType.PAYABLE, AccountType.RECEIVABLE -> OfxAccountType.CHECKING
-                AccountType.BANK, AccountType.ASSET -> OfxAccountType.SAVINGS
-                AccountType.MUTUAL, AccountType.STOCK, AccountType.EQUITY, AccountType.CURRENCY -> OfxAccountType.MONEYMRKT
+                AccountType.CREDIT,
+                AccountType.LIABILITY -> OfxAccountType.CREDITLINE
+                AccountType.CASH,
+                AccountType.INCOME,
+                AccountType.EXPENSE,
+                AccountType.PAYABLE,
+                AccountType.RECEIVABLE -> OfxAccountType.CHECKING
+                AccountType.BANK,
+                AccountType.ASSET -> OfxAccountType.SAVINGS
+                AccountType.MUTUAL,
+                AccountType.STOCK,
+                AccountType.EQUITY,
+                AccountType.CURRENCY -> OfxAccountType.MONEYMRKT
                 else -> OfxAccountType.CHECKING
             }
         }

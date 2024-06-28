@@ -77,8 +77,7 @@ import javax.xml.parsers.ParserConfigurationException;
  */
 @RunWith(RobolectricTestRunner.class)
 //package is required so that resources can be found in dev mode
-@Config(sdk = 21, packageName = "org.gnucash.android",
-        shadows = {ShadowCrashlytics.class, ShadowUserVoice.class})
+@Config(sdk = 21, shadows = {ShadowCrashlytics.class, ShadowUserVoice.class})
 public class ScheduledActionServiceTest {
 
     private static String mActionUID;
@@ -320,7 +319,7 @@ public class ScheduledActionServiceTest {
         backupParams.setExportTarget(ExportParams.ExportTarget.SD_CARD);
         scheduledBackup.setTag(backupParams.toCsv());
 
-        File backupFolder = new File(Exporter.getExportFolderPath(BooksDbAdapter.getInstance().getActiveBookUID()));
+        File backupFolder = new File(Exporter.getExportFolderPath(GnuCashApplication.getActiveBookUID()));
         assertThat(backupFolder).exists();
         assertThat(backupFolder.listFiles()).isEmpty();
 
@@ -369,7 +368,7 @@ public class ScheduledActionServiceTest {
         scheduledBackup.setTag(backupParams.toCsv());
 
         File backupFolder = new File(
-                Exporter.getExportFolderPath(BooksDbAdapter.getInstance().getActiveBookUID()));
+                Exporter.getExportFolderPath(GnuCashApplication.getActiveBookUID()));
         assertThat(backupFolder).exists();
         assertThat(backupFolder.listFiles()).isEmpty();
 
@@ -416,7 +415,7 @@ public class ScheduledActionServiceTest {
                 new Timestamp(LocalDateTime.now().minusDays(9).toDate().getTime()));
 
         File backupFolder = new File(
-                Exporter.getExportFolderPath(BooksDbAdapter.getInstance().getActiveBookUID()));
+                Exporter.getExportFolderPath(GnuCashApplication.getActiveBookUID()));
         assertThat(backupFolder).exists();
         assertThat(backupFolder.listFiles()).isEmpty();
 
@@ -472,7 +471,7 @@ public class ScheduledActionServiceTest {
         mTransactionsDbAdapter.addRecord(transaction);
 
         File backupFolder = new File(
-                Exporter.getExportFolderPath(BooksDbAdapter.getInstance().getActiveBookUID()));
+                Exporter.getExportFolderPath(GnuCashApplication.getActiveBookUID()));
         assertThat(backupFolder).exists();
         assertThat(backupFolder.listFiles()).isEmpty();
 

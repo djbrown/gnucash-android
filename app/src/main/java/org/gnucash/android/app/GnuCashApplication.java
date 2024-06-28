@@ -300,6 +300,11 @@ public class GnuCashApplication extends Application {
         return mBooksDbAdapter;
     }
 
+    @NonNull
+    public static String getActiveBookUID() {
+        return getBooksDbAdapter().getActiveBookUID();
+    }
+
     /**
      * Returns the currently active database in the application
      *
@@ -476,6 +481,17 @@ public class GnuCashApplication extends Application {
         config.putUserTrait("android_version", Build.VERSION.RELEASE);
         // config.identifyUser("USER_ID", "User Name", "email@example.com");
         UserVoice.init(config, this);
+    }
+
+    /**
+     * Returns <code>true</code> if setting is enabled to backup the book before deleting transactions,
+     * <code>false</code> otherwise.
+     * @param context The context.
+     * @return <code>true</code> if the book should be backed-up.
+     */
+    public static boolean shouldBackupTransactions(Context context) {
+        SharedPreferences sharedPrefs = PreferenceManager.getDefaultSharedPreferences(context);
+        return sharedPrefs.getBoolean(context.getString(R.string.key_delete_transaction_backup), true);
     }
 
 }

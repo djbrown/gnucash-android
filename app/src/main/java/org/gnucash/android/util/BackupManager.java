@@ -25,6 +25,8 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.SystemClock;
+import android.text.TextUtils;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -45,7 +47,6 @@ import org.gnucash.android.ui.settings.PreferenceActivity;
 import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.IOException;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.util.Arrays;
@@ -53,6 +54,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.zip.GZIPOutputStream;
 
+import kotlin.Unit;
+import kotlin.jvm.functions.Function1;
 import timber.log.Timber;
 
 /**
@@ -61,33 +64,38 @@ import timber.log.Timber;
 public class BackupManager {
 
     public static final String KEY_BACKUP_FILE = "book_backup_file_key";
+    public static final String MIME_TYPE = "application/gzip";
 
     /**
      * Perform an automatic backup of all books in the database.
      * This method is run every time the service is executed
      */
     @WorkerThread
-    static void backupAllBooks() {
+    static boolean backupAllBooks() {
         Context context = GnuCashApplication.getAppContext();
-        backupAllBooks(context);
+        return backupAllBooks(context);
     }
 
     /**
      * Perform an automatic backup of all books in the database.
      * This method is run every time the service is executed
+     * @return `true` when all books were successfully backed-up.
      */
     @WorkerThread
-    static void backupAllBooks(Context context) {
+    static boolean backupAllBooks(Context context) {
         BooksDbAdapter booksDbAdapter = BooksDbAdapter.getInstance();
         List<String> bookUIDs = booksDbAdapter.getAllBookUIDs();
 
         for (String bookUID : bookUIDs) {
-            backupBook(context, bookUID);
+            if (!backupBook(context, bookUID)) {
+                return false;
+            }
         }
+        return true;
     }
 
     /**
-     * Backs up the active book to the directory {@link #getBackupFolderPath(String)}.
+     * Backs up the active book to the directory {@link #getBackupFolder(String)}.
      *
      * @return {@code true} if backup was successful, {@code false} otherwise
      */
@@ -97,56 +105,47 @@ public class BackupManager {
     }
 
     /**
-     * Backs up the active book to the directory {@link #getBackupFolderPath(String)}.
+     * Backs up the active book to the directory {@link #getBackupFolder(String)}.
      *
      * @return {@code true} if backup was successful, {@code false} otherwise
      */
+    @WorkerThread
     public static boolean backupActiveBook(Context context) {
-        return backupBook(context, BooksDbAdapter.getInstance().getActiveBookUID());
+        return backupBook(context, GnuCashApplication.getActiveBookUID());
     }
 
     /**
      * Backs up the book with UID {@code bookUID} to the directory
-     * {@link #getBackupFolderPath(String)}.
+     * {@link #getBackupFolder(String)}.
      *
      * @param bookUID Unique ID of the book
      * @return {@code true} if backup was successful, {@code false} otherwise
      */
     @WorkerThread
-    public static boolean backupBook(String bookUID) {
-        return backupBook(GnuCashApplication.getAppContext(), bookUID);
-    }
-
-    /**
-     * Backs up the book with UID {@code bookUID} to the directory
-     * {@link #getBackupFolderPath(String)}.
-     *
-     * @param bookUID Unique ID of the book
-     * @return {@code true} if backup was successful, {@code false} otherwise
-     */
     public static boolean backupBook(Context context, String bookUID) {
+        ExportParams params = new ExportParams(ExportFormat.XML);
         OutputStream outputStream;
         try {
-            String backupFile = getBookBackupFileUri(bookUID);
-            if (backupFile != null) {
-                outputStream = context.getContentResolver().openOutputStream(Uri.parse(backupFile));
+            Uri backupUri = getBookBackupFileUri(bookUID);
+            if (backupUri != null) {
+                outputStream = context.getContentResolver().openOutputStream(backupUri);
             } else { //no Uri set by user, use default location on SD card
-                backupFile = getBackupFilePath(bookUID);
+                File backupFile = getBackupFile(bookUID, params);
                 outputStream = new FileOutputStream(backupFile);
             }
+            params.setExportLocation(backupUri);
 
             BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(outputStream);
             GZIPOutputStream gzipOutputStream = new GZIPOutputStream(bufferedOutputStream);
             OutputStreamWriter writer = new OutputStreamWriter(gzipOutputStream);
 
-            ExportParams params = new ExportParams(ExportFormat.XML);
-            new GncXmlExporter(params).generateExport(writer);
+            new GncXmlExporter(context, params, bookUID).generateExport(writer);
             writer.close();
             return true;
-        } catch (IOException | Exporter.ExporterException | NullPointerException e) {
-            Timber.e(e, "Error creating XML  backup");
-            return false;
+        } catch (Throwable e) {
+            Timber.e(e, "Error creating XML backup");
         }
+        return false;
     }
 
     /**
@@ -154,13 +153,15 @@ public class BackupManager {
      * Backups are done in XML format and are Gzipped (with ".gnca" extension).
      *
      * @param bookUID GUID of the book
-     * @return the file path for backups of the database.
-     * @see #getBackupFolderPath(String)
+     * @param params the export parameters.
+     * @return the file for backups of the database.
+     * @see #getBackupFolder(String)
      */
-    private static String getBackupFilePath(String bookUID) {
+    private static File getBackupFile(@NonNull String bookUID, @Nullable ExportParams params) {
         Book book = BooksDbAdapter.getInstance().getRecord(bookUID);
-        return getBackupFolderPath(book.getUID())
-                + Exporter.buildExportFilename(ExportFormat.XML, book.getDisplayName());
+        ExportFormat format = (params != null) ? params.getExportFormat() : ExportFormat.XML;
+        String name = Exporter.buildExportFilename(format, book.getDisplayName()) + ".gz";
+        return new File(getBackupFolder(book.getUID()), name);
     }
 
     /**
@@ -168,17 +169,14 @@ public class BackupManager {
      *
      * <p>Each book has its own backup folder.</p>
      *
-     * @return Absolute path to backup folder for the book
+     * @return The backup folder for the book
      */
-    private static String getBackupFolderPath(String bookUID) {
-        String baseFolderPath = GnuCashApplication.getAppContext()
-                .getExternalFilesDir(null)
-                .getAbsolutePath();
-        String path = baseFolderPath + "/" + bookUID + "/backups/";
-        File file = new File(path);
-        if (!file.exists())
-            file.mkdirs();
-        return path;
+    private static File getBackupFolder(String bookUID) {
+        File baseFolder = GnuCashApplication.getAppContext().getExternalFilesDir(null);
+        File folder = new File(baseFolder, bookUID + File.separator + "backups");
+        if (!folder.exists())
+            folder.mkdirs();
+        return folder;
     }
 
     /**
@@ -188,13 +186,17 @@ public class BackupManager {
      * @return DocumentFile for book backups, or null if the user hasn't set any.
      */
     @Nullable
-    public static String getBookBackupFileUri(String bookUID) {
+    public static Uri getBookBackupFileUri(String bookUID) {
         SharedPreferences sharedPreferences = PreferenceActivity.getBookSharedPreferences(bookUID);
-        return sharedPreferences.getString(KEY_BACKUP_FILE, null);
+        String path = sharedPreferences.getString(KEY_BACKUP_FILE, null);
+        if (TextUtils.isEmpty(path)) {
+            return null;
+        }
+        return Uri.parse(path);
     }
 
     public static List<File> getBackupList(String bookUID) {
-        File[] backupFiles = new File(getBackupFolderPath(bookUID)).listFiles();
+        File[] backupFiles = getBackupFolder(bookUID).listFiles();
         Arrays.sort(backupFiles);
         List<File> backupFilesList = Arrays.asList(backupFiles);
         Collections.reverse(backupFilesList);
@@ -206,15 +208,15 @@ public class BackupManager {
         Intent intent = new Intent(context, PeriodicJobReceiver.class);
         intent.setAction(PeriodicJobReceiver.ACTION_BACKUP);
         PendingIntent alarmIntent = PendingIntent.getBroadcast(context, 0, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
         AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         alarmManager.setInexactRepeating(AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                SystemClock.elapsedRealtime() + AlarmManager.INTERVAL_FIFTEEN_MINUTES,
-                AlarmManager.INTERVAL_DAY, alarmIntent);
+            SystemClock.elapsedRealtime() + AlarmManager.INTERVAL_FIFTEEN_MINUTES,
+            AlarmManager.INTERVAL_DAY, alarmIntent);
     }
 
-    public static void backupBookAsync(@Nullable final Activity activity, final String bookUID, @NonNull final Runnable after) {
-        new AsyncTask<>() {
+    public static void backupBookAsync(@Nullable final Activity activity, final String bookUID, @NonNull final Function1<Boolean, Unit> after) {
+        new AsyncTask<Object, Void, Boolean>() {
             private ProgressDialog mProgressDialog;
 
             @Override
@@ -229,53 +231,36 @@ public class BackupManager {
             }
 
             @Override
-            protected Object doInBackground(Object... objects) {
-                backupBook(bookUID);
-                return Boolean.TRUE;
+            protected Boolean doInBackground(Object... objects) {
+                return backupBook(activity, bookUID);
             }
 
             @Override
-            protected void onPostExecute(Object o) {
-                if (mProgressDialog != null) {
-                    mProgressDialog.hide();
+            protected void onPostExecute(Boolean result) {
+                try {
+                    if (mProgressDialog != null && mProgressDialog.isShowing()) {
+                        mProgressDialog.dismiss();
+                    }
+                } catch (IllegalArgumentException ex) {
+                    //TODO: This is a hack to catch "View not attached to window" exceptions
+                    //FIXME by moving the creation and display of the progress dialog to the Fragment
+                } finally {
+                    mProgressDialog = null;
                 }
-                after.run();
+                if (!result) {
+                    Toast.makeText(activity, R.string.toast_backup_failed, Toast.LENGTH_SHORT).show();
+                }
+                after.invoke(result);
+            }
+
+            @Override
+            protected void onCancelled() {
+                after.invoke(Boolean.FALSE);
             }
         }.execute();
     }
 
-    static void backupAllBooksAsync(@Nullable final Activity activity, @NonNull final Runnable after) {
-        new AsyncTask<>() {
-            private ProgressDialog mProgressDialog;
-
-            @Override
-            protected void onPreExecute() {
-                if (activity != null) {
-                    mProgressDialog = new GnucashProgressDialog(activity);
-                    mProgressDialog.setTitle(R.string.title_create_backup_pref);
-                    mProgressDialog.setCancelable(true);
-                    mProgressDialog.setOnCancelListener(dialogInterface -> cancel(true));
-                    mProgressDialog.show();
-                }
-            }
-
-            @Override
-            protected Object doInBackground(Object... objects) {
-                backupAllBooks(activity);
-                return Boolean.TRUE;
-            }
-
-            @Override
-            protected void onPostExecute(Object o) {
-                if (mProgressDialog != null) {
-                    mProgressDialog.hide();
-                }
-                after.run();
-            }
-        }.execute();
-    }
-
-    public static void backupActiveBookAsync(@Nullable Activity activity, @NonNull final Runnable after) {
-        backupBookAsync(activity, BooksDbAdapter.getInstance().getActiveBookUID(), after);
+    public static void backupActiveBookAsync(@Nullable Activity activity, @NonNull final Function1<Boolean, Unit> after) {
+        backupBookAsync(activity, GnuCashApplication.getActiveBookUID(), after);
     }
 }

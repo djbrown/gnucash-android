@@ -16,14 +16,14 @@
 
 package org.gnucash.android.ui.transaction;
 
+import static org.gnucash.android.util.ContentExtKt.getDocumentName;
+
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.res.Resources;
 import android.database.Cursor;
 import android.graphics.Rect;
-import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
 import android.util.SparseBooleanArray;
 import android.view.LayoutInflater;
@@ -39,6 +39,7 @@ import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.view.ActionMode;
@@ -57,13 +58,13 @@ import org.gnucash.android.db.adapter.ScheduledActionDbAdapter;
 import org.gnucash.android.db.adapter.TransactionsDbAdapter;
 import org.gnucash.android.export.ExportParams;
 import org.gnucash.android.model.ScheduledAction;
+import org.gnucash.android.model.Split;
 import org.gnucash.android.model.Transaction;
 import org.gnucash.android.ui.common.FormActivity;
 import org.gnucash.android.ui.common.UxArgument;
 import org.gnucash.android.util.BackupManager;
+import org.joda.time.format.DateTimeFormat;
 
-import java.text.DateFormat;
-import java.util.Date;
 import java.util.List;
 
 import timber.log.Timber;
@@ -75,7 +76,7 @@ import timber.log.Timber;
  * @author Ngewi Fet <ngewif@gmail.com>
  */
 public class ScheduledActionsListFragment extends ListFragment implements
-        LoaderManager.LoaderCallbacks<Cursor> {
+    LoaderManager.LoaderCallbacks<Cursor> {
 
     private TransactionsDbAdapter mTransactionsDbAdapter;
     private SimpleCursorAdapter mCursorAdapter;
@@ -115,33 +116,11 @@ public class ScheduledActionsListFragment extends ListFragment implements
         public boolean onActionItemClicked(ActionMode mode, MenuItem item) {
             switch (item.getItemId()) {
                 case R.id.context_menu_delete:
-                    BackupManager.backupActiveBook(getContext());
-
-                    for (long id : getListView().getCheckedItemIds()) {
-
-                        if (mActionType == ScheduledAction.ActionType.TRANSACTION) {
-                            Timber.i("Cancelling scheduled transaction(s)");
-                            String trnUID = mTransactionsDbAdapter.getUID(id);
-                            ScheduledActionDbAdapter scheduledActionDbAdapter = GnuCashApplication.getScheduledEventDbAdapter();
-                            List<ScheduledAction> actions = scheduledActionDbAdapter.getScheduledActionsWithUID(trnUID);
-
-                            if (mTransactionsDbAdapter.deleteRecord(id)) {
-                                Toast.makeText(getActivity(),
-                                        R.string.toast_recurring_transaction_deleted,
-                                        Toast.LENGTH_SHORT).show();
-                                for (ScheduledAction action : actions) {
-                                    scheduledActionDbAdapter.deleteRecord(action.getUID());
-                                }
-                            }
-                        } else if (mActionType == ScheduledAction.ActionType.BACKUP) {
-                            Timber.i("Removing scheduled exports");
-                            ScheduledActionDbAdapter.getInstance().deleteRecord(id);
-                        }
-                    }
-                    mode.finish();
-                    setDefaultStatusBarColor();
-                    getLoaderManager().destroyLoader(0);
-                    refreshList();
+                    final Activity activity = requireActivity();
+                    BackupManager.backupActiveBookAsync(activity, result -> {
+                        afterBackup(activity, mode);
+                        return null;
+                    });
                     return true;
 
                 default:
@@ -151,9 +130,37 @@ public class ScheduledActionsListFragment extends ListFragment implements
         }
     };
 
+    private void afterBackup(Context context, ActionMode mode) {
+        for (long id : getListView().getCheckedItemIds()) {
+            if (mActionType == ScheduledAction.ActionType.TRANSACTION) {
+                Timber.i("Cancelling scheduled transaction(s)");
+                String trnUID = mTransactionsDbAdapter.getUID(id);
+                ScheduledActionDbAdapter scheduledActionDbAdapter = GnuCashApplication.getScheduledEventDbAdapter();
+                List<ScheduledAction> actions = scheduledActionDbAdapter.getScheduledActionsWithUID(trnUID);
+
+                if (mTransactionsDbAdapter.deleteRecord(id)) {
+                    Toast.makeText(context,
+                        R.string.toast_recurring_transaction_deleted,
+                        Toast.LENGTH_SHORT).show();
+                    for (ScheduledAction action : actions) {
+                        scheduledActionDbAdapter.deleteRecord(action.getUID());
+                    }
+                }
+            } else if (mActionType == ScheduledAction.ActionType.BACKUP) {
+                Timber.i("Removing scheduled exports");
+                ScheduledActionDbAdapter.getInstance().deleteRecord(id);
+            }
+        }
+        mode.finish();
+        setDefaultStatusBarColor();
+        getLoaderManager().destroyLoader(0);
+        refreshList();
+    }
+
     private void setDefaultStatusBarColor() {
-        getActivity().getWindow().setStatusBarColor(
-            ContextCompat.getColor(getContext(), R.color.theme_primary_dark));
+        Activity activity = getActivity();
+        if (activity == null) return;
+        activity.getWindow().setStatusBarColor(ContextCompat.getColor(activity, R.color.theme_primary_dark));
     }
 
     /**
@@ -171,21 +178,21 @@ public class ScheduledActionsListFragment extends ListFragment implements
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
+        Context context = requireContext();
         mTransactionsDbAdapter = TransactionsDbAdapter.getInstance();
         switch (mActionType) {
             case TRANSACTION:
                 mCursorAdapter = new ScheduledTransactionsCursorAdapter(
-                        getActivity().getApplicationContext(),
-                        R.layout.list_item_scheduled_trxn, null,
-                        new String[]{DatabaseSchema.TransactionEntry.COLUMN_DESCRIPTION},
-                        new int[]{R.id.primary_text});
+                    context,
+                    R.layout.list_item_scheduled_trxn, null,
+                    new String[]{DatabaseSchema.TransactionEntry.COLUMN_DESCRIPTION},
+                    new int[]{R.id.primary_text});
                 break;
             case BACKUP:
                 mCursorAdapter = new ScheduledExportCursorAdapter(
-                        getActivity().getApplicationContext(),
-                        R.layout.list_item_scheduled_trxn, null,
-                        new String[]{}, new int[]{});
+                    context,
+                    R.layout.list_item_scheduled_trxn, null,
+                    new String[]{}, new int[]{});
                 break;
 
             default:
@@ -214,7 +221,7 @@ public class ScheduledActionsListFragment extends ListFragment implements
         setHasOptionsMenu(true);
         getListView().setChoiceMode(ListView.CHOICE_MODE_MULTIPLE);
         ((TextView) getListView().getEmptyView())
-                .setTextColor(ContextCompat.getColor(getContext(), R.color.theme_accent));
+            .setTextColor(ContextCompat.getColor(getContext(), R.color.theme_accent));
         if (mActionType == ScheduledAction.ActionType.TRANSACTION) {
             ((TextView) getListView().getEmptyView()).setText(R.string.label_no_recurring_transactions);
         } else if (mActionType == ScheduledAction.ActionType.BACKUP) {
@@ -237,13 +244,14 @@ public class ScheduledActionsListFragment extends ListFragment implements
 
 
     @Override
-    public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
+    public void onCreateOptionsMenu(@NonNull Menu menu, @NonNull MenuInflater inflater) {
+        super.onCreateOptionsMenu(menu, inflater);
         if (mActionType == ScheduledAction.ActionType.BACKUP)
             inflater.inflate(R.menu.scheduled_export_actions, menu);
     }
 
     @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         switch (item.getItemId()) {
             case R.id.menu_add_scheduled_export:
                 Intent intent = new Intent(getActivity(), FormActivity.class);
@@ -277,7 +285,7 @@ public class ScheduledActionsListFragment extends ListFragment implements
 
         String accountUID = transaction.getSplits().get(0).getAccountUID();
         openTransactionForEdit(accountUID, mTransactionsDbAdapter.getUID(id),
-                v.getTag().toString());
+            v.getTag().toString());
     }
 
     /**
@@ -365,7 +373,7 @@ public class ScheduledActionsListFragment extends ListFragment implements
         mInEditMode = true;
         // Start the CAB using the ActionMode.Callback defined above
         mActionMode = ((AppCompatActivity) getActivity())
-                .startSupportActionMode(mActionModeCallbacks);
+            .startSupportActionMode(mActionModeCallbacks);
         getActivity().getWindow().setStatusBarColor(
             ContextCompat.getColor(getContext(), android.R.color.darker_gray));
     }
@@ -435,7 +443,7 @@ public class ScheduledActionsListFragment extends ListFragment implements
             } else {
                 view.setBackgroundColor(ContextCompat.getColor(getContext(), android.R.color.transparent));
                 secondaryText.setTextColor(ContextCompat.getColor(getContext(),
-                        android.R.color.secondary_text_light_nodisable));
+                    android.R.color.secondary_text_light_nodisable));
                 checkbox.setChecked(false);
             }
 
@@ -467,13 +475,20 @@ public class ScheduledActionsListFragment extends ListFragment implements
             Transaction transaction = mTransactionsDbAdapter.buildModelInstance(cursor);
 
             TextView amountTextView = (TextView) view.findViewById(R.id.right_text);
-            if (transaction.getSplits().size() == 2) {
-                if (transaction.getSplits().get(0).isPairOf(transaction.getSplits().get(1))) {
-                    amountTextView.setText(transaction.getSplits().get(0).getValue().formattedString());
+            String text = "";
+            List<Split> splits = transaction.getSplits();
+            if (splits.size() == 2) {
+                Split first = splits.get(0);
+                for (Split split : splits) {
+                    if ((first != split) && first.isPairOf(split)) {
+                        text = first.getValue().formattedString();
+                        break;
+                    }
                 }
             } else {
-                amountTextView.setText(getString(R.string.label_split_count, transaction.getSplits().size()));
+                text = getString(R.string.label_split_count, splits.size());
             }
+            amountTextView.setText(text);
             TextView descriptionTextView = (TextView) view.findViewById(R.id.secondary_text);
 
             ScheduledActionDbAdapter scheduledActionDbAdapter = ScheduledActionDbAdapter.getInstance();
@@ -483,9 +498,9 @@ public class ScheduledActionsListFragment extends ListFragment implements
             long endTime = scheduledAction.getEndTime();
             if (endTime > 0 && endTime < System.currentTimeMillis()) {
                 ((TextView) view.findViewById(R.id.primary_text)).setTextColor(
-                        ContextCompat.getColor(getContext(), android.R.color.darker_gray));
+                    ContextCompat.getColor(getContext(), android.R.color.darker_gray));
                 descriptionTextView.setText(getString(R.string.label_scheduled_action_ended,
-                        DateFormat.getInstance().format(new Date(scheduledAction.getLastRunTime()))));
+                    DateTimeFormat.shortDateTime().print(scheduledAction.getLastRunTime())));
             } else {
                 descriptionTextView.setText(scheduledAction.getRepeatString());
             }
@@ -537,7 +552,7 @@ public class ScheduledActionsListFragment extends ListFragment implements
             } else {
                 view.setBackgroundColor(ContextCompat.getColor(getContext(), android.R.color.transparent));
                 secondaryText.setTextColor(
-                        ContextCompat.getColor(getContext(), android.R.color.secondary_text_light_nodisable));
+                    ContextCompat.getColor(getContext(), android.R.color.secondary_text_light_nodisable));
                 checkbox.setChecked(false);
             }
 
@@ -572,11 +587,15 @@ public class ScheduledActionsListFragment extends ListFragment implements
             ExportParams params = ExportParams.parseCsv(scheduledAction.getTag());
             String exportDestination = params.getExportTarget().getDescription();
             if (params.getExportTarget() == ExportParams.ExportTarget.URI) {
-                exportDestination = exportDestination + " (" + params.getExportLocation().getHost() + ")";
+                exportDestination = exportDestination + " (" + getDocumentName(params.getExportLocation(), context) + ")";
             }
-            primaryTextView.setText(params.getExportFormat().name() + " "
-                    + scheduledAction.getActionType().name().toLowerCase() + " to "
-                    + exportDestination);
+            String description = context.getString(
+                R.string.schedule_export_desription,
+                params.getExportFormat().name(),
+                context.getString(scheduledAction.getActionType().labelId),
+                exportDestination
+            );
+            primaryTextView.setText(description);
 
             view.findViewById(R.id.right_text).setVisibility(View.GONE);
 
@@ -585,9 +604,9 @@ public class ScheduledActionsListFragment extends ListFragment implements
             long endTime = scheduledAction.getEndTime();
             if (endTime > 0 && endTime < System.currentTimeMillis()) {
                 ((TextView) view.findViewById(R.id.primary_text))
-                        .setTextColor(ContextCompat.getColor(getContext(), android.R.color.darker_gray));
+                    .setTextColor(ContextCompat.getColor(getContext(), android.R.color.darker_gray));
                 descriptionTextView.setText(getString(R.string.label_scheduled_action_ended,
-                        DateFormat.getInstance().format(new Date(scheduledAction.getLastRunTime()))));
+                    DateTimeFormat.shortDateTime().print(scheduledAction.getLastRunTime())));
             } else {
                 descriptionTextView.setText(scheduledAction.getRepeatString());
             }
@@ -633,13 +652,12 @@ public class ScheduledActionsListFragment extends ListFragment implements
             mDatabaseAdapter = ScheduledActionDbAdapter.getInstance();
 
             Cursor c = mDatabaseAdapter.fetchAllRecords(
-                    DatabaseSchema.ScheduledActionEntry.COLUMN_TYPE + "=?",
-                    new String[]{ScheduledAction.ActionType.BACKUP.name()}, null);
+                DatabaseSchema.ScheduledActionEntry.COLUMN_TYPE + "=?",
+                new String[]{ScheduledAction.ActionType.BACKUP.name()}, null);
 
             registerContentObserver(c);
             return c;
         }
     }
-
 }
 

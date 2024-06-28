@@ -16,6 +16,7 @@
 
 package org.gnucash.android.ui.settings;
 
+import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 
@@ -26,6 +27,7 @@ import androidx.preference.PreferenceFragmentCompat;
 import androidx.preference.SwitchPreferenceCompat;
 
 import org.gnucash.android.R;
+import org.gnucash.android.app.GnuCashApplication;
 import org.gnucash.android.db.DatabaseSchema;
 import org.gnucash.android.db.adapter.AccountsDbAdapter;
 import org.gnucash.android.db.adapter.BooksDbAdapter;
@@ -45,7 +47,7 @@ public class TransactionsPreferenceFragment extends PreferenceFragmentCompat imp
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        getPreferenceManager().setSharedPreferencesName(BooksDbAdapter.getInstance().getActiveBookUID());
+        getPreferenceManager().setSharedPreferencesName(GnuCashApplication.getActiveBookUID());
 
         ActionBar actionBar = ((AppCompatActivity) getActivity()).getSupportActionBar();
         actionBar.setHomeButtonEnabled(true);
@@ -110,9 +112,14 @@ public class TransactionsPreferenceFragment extends PreferenceFragmentCompat imp
      * Deletes all transactions in the system
      */
     public void showDeleteTransactionsDialog() {
+        Context context = requireContext();
         DeleteAllTransactionsConfirmationDialog deleteTransactionsConfirmationDialog =
-                DeleteAllTransactionsConfirmationDialog.newInstance();
-        deleteTransactionsConfirmationDialog.show(getActivity().getSupportFragmentManager(), "transaction_settings");
+            DeleteAllTransactionsConfirmationDialog.newInstance();
+        if (GnuCashApplication.shouldBackupTransactions(context)) {
+            deleteTransactionsConfirmationDialog.show(getParentFragmentManager(), "transaction_settings");
+        } else {
+            deleteTransactionsConfirmationDialog.deleteAll(context);
+        }
     }
 
 

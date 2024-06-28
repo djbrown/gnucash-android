@@ -25,6 +25,7 @@ import android.view.View;
 import android.widget.TableLayout;
 import android.widget.TextView;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import org.gnucash.android.R;
@@ -123,7 +124,7 @@ public class BalanceSheetFragment extends BaseReportFragment {
     }
 
     @Override
-    public void onPrepareOptionsMenu(Menu menu) {
+    public void onPrepareOptionsMenu(@NonNull Menu menu) {
         super.onPrepareOptionsMenu(menu);
         menu.findItem(R.id.menu_group_reports_by).setVisible(false);
     }
@@ -152,6 +153,7 @@ public class BalanceSheetFragment extends BaseReportFragment {
             TransactionsActivity.displayBalance(balanceTextView, balance);
             tableLayout.addView(view);
         }
+        cursor.close();
 
         View totalView = inflater.inflate(R.layout.row_balance_sheet, tableLayout, false);
         TableLayout.LayoutParams layoutParams = (TableLayout.LayoutParams) totalView.getLayoutParams();

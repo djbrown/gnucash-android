@@ -11,6 +11,7 @@ import android.view.View;
 import android.widget.TableLayout;
 import android.widget.TextView;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.widget.Toolbar;
 
@@ -26,9 +27,8 @@ import org.gnucash.android.model.Transaction;
 import org.gnucash.android.ui.common.FormActivity;
 import org.gnucash.android.ui.common.UxArgument;
 import org.gnucash.android.ui.passcode.PasscodeLockActivity;
+import org.joda.time.format.DateTimeFormat;
 
-import java.text.DateFormat;
-import java.util.Date;
 import java.util.MissingFormatArgumentException;
 
 import butterknife.BindView;
@@ -158,9 +158,7 @@ public class TransactionDetailActivity extends PasscodeLockActivity {
             mDetailTableLayout.addView(viewHolder.itemView, index++);
         }
 
-
-        Date trnDate = new Date(transaction.getTimeMillis());
-        String timeAndDate = DateFormat.getDateInstance(DateFormat.FULL).format(trnDate);
+        String timeAndDate = DateTimeFormat.fullDate().print(transaction.getTimeMillis());
         mTimeAndDate.setText(timeAndDate);
 
         if (transaction.getScheduledActionUID() != null) {
@@ -210,7 +208,7 @@ public class TransactionDetailActivity extends PasscodeLockActivity {
     }
 
     @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         switch (item.getItemId()) {
             case android.R.id.home:
                 finish();

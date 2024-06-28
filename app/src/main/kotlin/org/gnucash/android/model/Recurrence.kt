@@ -27,9 +27,9 @@ import org.joda.time.ReadablePeriod
 import org.joda.time.Weeks
 import org.joda.time.Years
 import java.sql.Timestamp
-import java.text.SimpleDateFormat
 import java.util.Collections
 import java.util.Date
+import org.joda.time.format.DateTimeFormat
 
 /**
  * Model for recurrences in the database
@@ -100,18 +100,13 @@ class Recurrence(periodType: PeriodType) : BaseModel() {
         get() {
             val repeatBuilder = StringBuilder(frequencyRepeatString)
             val context = GnuCashApplication.getAppContext()
-            val dayOfWeek = SimpleDateFormat("EEEE", GnuCashApplication.getDefaultLocale())
-                .format(Date(periodStart.time))
+            val dayOfWeek = dayOfWeekFormatter.print(periodStart.time)
             if (periodType === PeriodType.WEEK) {
                 repeatBuilder.append(" ")
                     .append(context.getString(R.string.repeat_on_weekday, dayOfWeek))
             }
             if (periodEnd != null) {
-                val endDateString = SimpleDateFormat.getDateInstance().format(
-                    Date(
-                        periodEnd!!.time
-                    )
-                )
+                val endDateString = DateTimeFormat.mediumDate().print(periodEnd!!.time)
                 repeatBuilder.append(", ")
                     .append(context.getString(R.string.repeat_until_date, endDateString))
             }
@@ -263,7 +258,6 @@ class Recurrence(periodType: PeriodType) : BaseModel() {
                 PeriodType.WEEK -> Weeks.weeks(multiple)
                 PeriodType.MONTH -> Months.months(multiple)
                 PeriodType.YEAR -> Years.years(multiple)
-                else -> Months.months(multiple)
             }
             var count = 0
             var startTime = LocalDateTime(periodStart.time)
@@ -309,7 +303,6 @@ class Recurrence(periodType: PeriodType) : BaseModel() {
             PeriodType.WEEK -> localDate.plusWeeks(occurrenceDuration)
             PeriodType.MONTH -> localDate.plusMonths(occurrenceDuration)
             PeriodType.YEAR -> localDate.plusYears(occurrenceDuration)
-            else -> localDate.plusMonths(occurrenceDuration)
         }
         periodEnd = Timestamp(endDate.toDateTime().millis)
     }
@@ -329,7 +322,7 @@ class Recurrence(periodType: PeriodType) : BaseModel() {
      * @return String describing the period type
      */
     private val frequencyRepeatString: String
-        private get() {
+        get() {
             val res = GnuCashApplication.getAppContext().resources
             return when (periodType) {
                 PeriodType.HOUR -> res.getQuantityString(
@@ -366,6 +359,8 @@ class Recurrence(periodType: PeriodType) : BaseModel() {
         }
 
     companion object {
+        private val dayOfWeekFormatter = DateTimeFormat.forPattern("EEEE")
+
         /**
          * Returns a new [Recurrence] with the [PeriodType] specified in the old format.
          *
@@ -374,7 +369,6 @@ class Recurrence(periodType: PeriodType) : BaseModel() {
          */
         @JvmStatic
         fun fromLegacyPeriod(period: Long): Recurrence {
-
             var result = (period / RecurrenceParser.YEAR_MILLIS).toInt()
             if (result > 0) {
                 val recurrence = Recurrence(PeriodType.YEAR)

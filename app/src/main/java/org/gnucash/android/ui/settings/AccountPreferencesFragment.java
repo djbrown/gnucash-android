@@ -125,14 +125,14 @@ public class AccountPreferencesFragment extends PreferenceFragmentCompat impleme
                         .setIcon(R.drawable.ic_warning_black)
                         .setPositiveButton(R.string.btn_create_accounts, new DialogInterface.OnClickListener() {
                             @Override
-                            public void onClick(DialogInterface dialogInterface, int i) {
+                            public void onClick(DialogInterface dialogInterface, int which) {
                                 AccountsActivity.createDefaultAccounts(Money.DEFAULT_CURRENCY_CODE, getActivity());
                             }
                         })
                         .setNegativeButton(R.string.btn_cancel, new DialogInterface.OnClickListener() {
                             @Override
-                            public void onClick(DialogInterface dialogInterface, int i) {
-                                dialogInterface.dismiss();
+                            public void onClick(DialogInterface dialog, int which) {
+                                dialog.dismiss();
                             }
                         })
                         .create()
@@ -164,14 +164,13 @@ public class AccountPreferencesFragment extends PreferenceFragmentCompat impleme
      * Open a chooser for user to pick a file to export to
      */
     private void selectExportFile() {
-        Intent createIntent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
-        createIntent.setType("*/*").addCategory(Intent.CATEGORY_OPENABLE);
         String bookName = BooksDbAdapter.getInstance().getActiveBookDisplayName();
-
         String filename = Exporter.buildExportFilename(ExportFormat.CSVA, bookName);
-        createIntent.setType("application/text");
 
-        createIntent.putExtra(Intent.EXTRA_TITLE, filename);
+        Intent createIntent = new Intent(Intent.ACTION_CREATE_DOCUMENT)
+            .setType("*/*")
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .putExtra(Intent.EXTRA_TITLE, filename);
         startActivityForResult(createIntent, REQUEST_EXPORT_FILE);
     }
 
@@ -208,13 +207,14 @@ public class AccountPreferencesFragment extends PreferenceFragmentCompat impleme
                     ExportParams exportParams = new ExportParams(ExportFormat.CSVA);
                     exportParams.setExportTarget(ExportParams.ExportTarget.URI);
                     exportParams.setExportLocation(data.getData());
-                    ExportAsyncTask exportTask = new ExportAsyncTask(getActivity(), GnuCashApplication.getActiveDb());
+                    Activity context = requireActivity();
+                    ExportAsyncTask exportTask = new ExportAsyncTask(context, GnuCashApplication.getActiveBookUID());
 
                     try {
                         exportTask.execute(exportParams).get();
                     } catch (InterruptedException | ExecutionException e) {
                         Timber.e(e);
-                        Toast.makeText(getActivity(), "An error occurred during the Accounts CSV export",
+                        Toast.makeText(context, "An error occurred during the Accounts CSV export",
                                 Toast.LENGTH_LONG).show();
                     }
                 }

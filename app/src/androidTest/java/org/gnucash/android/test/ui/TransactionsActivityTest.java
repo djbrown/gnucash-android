@@ -81,7 +81,6 @@ import org.junit.runner.RunWith;
 
 import java.math.BigDecimal;
 import java.text.NumberFormat;
-import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
@@ -182,10 +181,10 @@ public class TransactionsActivityTest {
     }
 
     private void validateTimeInput(long timeMillis) {
-        String expectedValue = TransactionFormFragment.DATE_FORMATTER.format(new Date(timeMillis));
+        String expectedValue = TransactionFormFragment.DATE_FORMATTER.print(timeMillis);
         onView(withId(R.id.input_date)).check(matches(withText(expectedValue)));
 
-        expectedValue = TransactionFormFragment.TIME_FORMATTER.format(new Date(timeMillis));
+        expectedValue = TransactionFormFragment.TIME_FORMATTER.print(timeMillis);
         onView(withId(R.id.input_time)).check(matches(withText(expectedValue)));
     }
 
@@ -249,8 +248,8 @@ public class TransactionsActivityTest {
         formatter.setMinimumFractionDigits(2);
         formatter.setMaximumFractionDigits(2);
         onView(withId(R.id.input_transaction_amount)).check(matches(withText(formatter.format(balance.toDouble()))));
-        onView(withId(R.id.input_date)).check(matches(withText(TransactionFormFragment.DATE_FORMATTER.format(transaction.getTimeMillis()))));
-        onView(withId(R.id.input_time)).check(matches(withText(TransactionFormFragment.TIME_FORMATTER.format(transaction.getTimeMillis()))));
+        onView(withId(R.id.input_date)).check(matches(withText(TransactionFormFragment.DATE_FORMATTER.print(transaction.getTimeMillis()))));
+        onView(withId(R.id.input_time)).check(matches(withText(TransactionFormFragment.TIME_FORMATTER.print(transaction.getTimeMillis()))));
         onView(withId(R.id.input_description)).check(matches(withText(transaction.getNote())));
 
         validateTimeInput(transaction.getTimeMillis());
@@ -546,12 +545,12 @@ public class TransactionsActivityTest {
         assertThat(transactions).hasSize(1);
         Transaction transaction = transactions.get(0);
         assertThat(TRANSACTION_NAME).isEqualTo(transaction.getDescription());
-        Date expectedDate = new Date(mTransactionTimeMillis);
-        Date trxDate = new Date(transaction.getTimeMillis());
-        assertThat(TransactionFormFragment.DATE_FORMATTER.format(expectedDate))
-                .isEqualTo(TransactionFormFragment.DATE_FORMATTER.format(trxDate));
-        assertThat(TransactionFormFragment.TIME_FORMATTER.format(expectedDate))
-                .isEqualTo(TransactionFormFragment.TIME_FORMATTER.format(trxDate));
+        long expectedDate = mTransactionTimeMillis;
+        long trxDate = transaction.getTimeMillis();
+        assertThat(TransactionFormFragment.DATE_FORMATTER.print(expectedDate))
+                .isEqualTo(TransactionFormFragment.DATE_FORMATTER.print(trxDate));
+        assertThat(TransactionFormFragment.TIME_FORMATTER.print(expectedDate))
+                .isEqualTo(TransactionFormFragment.TIME_FORMATTER.print(trxDate));
 
         Split baseSplit = transaction.getSplits(TRANSACTIONS_ACCOUNT_UID).get(0);
         Money expectedAmount = new Money(TRANSACTION_AMOUNT, CURRENCY_CODE);
@@ -652,14 +651,14 @@ public class TransactionsActivityTest {
     @Test
     public void testLegacyIntentTransactionRecording() {
         int beforeCount = mTransactionsDbAdapter.getTransactionsCount(TRANSACTIONS_ACCOUNT_UID);
-        Intent transactionIntent = new Intent(Intent.ACTION_INSERT);
-        transactionIntent.setType(Transaction.MIME_TYPE);
-        transactionIntent.putExtra(Intent.EXTRA_TITLE, "Power intents");
-        transactionIntent.putExtra(Intent.EXTRA_TEXT, "Intents for sale");
-        transactionIntent.putExtra(Transaction.EXTRA_AMOUNT, new BigDecimal(4.99));
-        transactionIntent.putExtra(Transaction.EXTRA_ACCOUNT_UID, TRANSACTIONS_ACCOUNT_UID);
-        transactionIntent.putExtra(Transaction.EXTRA_TRANSACTION_TYPE, TransactionType.DEBIT.name());
-        transactionIntent.putExtra(Account.EXTRA_CURRENCY_CODE, "USD");
+        Intent transactionIntent = new Intent(Intent.ACTION_INSERT)
+            .setType(Transaction.MIME_TYPE)
+            .putExtra(Intent.EXTRA_TITLE, "Power intents")
+            .putExtra(Intent.EXTRA_TEXT, "Intents for sale")
+            .putExtra(Transaction.EXTRA_AMOUNT, new BigDecimal(4.99))
+            .putExtra(Transaction.EXTRA_ACCOUNT_UID, TRANSACTIONS_ACCOUNT_UID)
+            .putExtra(Transaction.EXTRA_TRANSACTION_TYPE, TransactionType.DEBIT.name())
+            .putExtra(Account.EXTRA_CURRENCY_CODE, "USD");
 
         new TransactionRecorder().onReceive(mTransactionsActivity, transactionIntent);
 
@@ -740,7 +739,7 @@ public class TransactionsActivityTest {
      * <p>
      * Basically the test works like this:
      *     <ol>
-     *         <li>Create a multicurrency transaction</li>
+     *         <li>Create a multi-currency transaction</li>
      *         <li>Change the transfer account so that both splits are of the same currency</li>
      *         <li>We now expect both the values and quantities of the splits to be the same</li>
      *     </ol>

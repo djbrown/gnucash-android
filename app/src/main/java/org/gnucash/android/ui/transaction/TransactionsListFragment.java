@@ -16,11 +16,13 @@
 
 package org.gnucash.android.ui.transaction;
 
+import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.res.Configuration;
 import android.database.Cursor;
 import android.os.Bundle;
+import android.text.TextUtils;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -179,12 +181,13 @@ public class TransactionsListFragment extends Fragment implements
     }
 
     @Override
-    public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
+    public void onCreateOptionsMenu(@NonNull Menu menu, @NonNull MenuInflater inflater) {
+        super.onCreateOptionsMenu(menu, inflater);
         inflater.inflate(R.menu.transactions_list_actions, menu);
     }
 
     @Override
-    public void onPrepareOptionsMenu(Menu menu) {
+    public void onPrepareOptionsMenu(@NonNull Menu menu) {
         super.onPrepareOptionsMenu(menu);
         MenuItem item = menu.findItem(R.id.menu_compact_trn_view);
         item.setChecked(mUseCompactView);
@@ -192,7 +195,7 @@ public class TransactionsListFragment extends Fragment implements
     }
 
     @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         switch (item.getItemId()) {
             case R.id.menu_compact_trn_view:
                 item.setChecked(!item.isChecked());
@@ -304,20 +307,27 @@ public class TransactionsListFragment extends Fragment implements
 
                 List<Split> splits = SplitsDbAdapter.getInstance().getSplitsForTransaction(transactionUID);
                 String text = "";
+                String error = null;
 
-                if (splits.size() == 2 && splits.get(0).isPairOf(splits.get(1))) {
-                    for (Split split : splits) {
-                        if (!split.getAccountUID().equals(mAccountUID)) {
-                            text = AccountsDbAdapter.getInstance().getFullyQualifiedAccountName(split.getAccountUID());
-                            break;
+                if (splits.size() == 2) {
+                    if (splits.get(0).isPairOf(splits.get(1))) {
+                        for (Split split : splits) {
+                            if (!split.getAccountUID().equals(mAccountUID)) {
+                                text = AccountsDbAdapter.getInstance().getFullyQualifiedAccountName(split.getAccountUID());
+                                break;
+                            }
                         }
                     }
+                    if (TextUtils.isEmpty(text)) {
+                        text = getString(R.string.label_split_count, splits.size());
+                        error = getString(R.string.imbalance_account_name);
+                    }
                 }
-
                 if (splits.size() > 2) {
-                    text = splits.size() + " splits";
+                    text = getString(R.string.label_split_count, splits.size());
                 }
                 holder.secondaryText.setText(text);
+                holder.secondaryText.setError(error);
                 holder.transactionDate.setText(dateText);
 
                 holder.editTransaction.setOnClickListener(new View.OnClickListener() {
@@ -370,31 +380,18 @@ public class TransactionsListFragment extends Fragment implements
             }
 
             @Override
-            public boolean onMenuItemClick(MenuItem item) {
+            public boolean onMenuItemClick(@NonNull MenuItem item) {
                 switch (item.getItemId()) {
                     case R.id.context_menu_delete:
-                        BackupManager.backupActiveBookAsync(getActivity(), () -> {
-                                mTransactionsDbAdapter.deleteRecord(transactionId);
-                                WidgetConfigurationActivity.updateAllWidgets(getActivity());
-                                refresh();
-                            }
-                        );
+                        deleteTransaction(transactionId);
                         return true;
 
                     case R.id.context_menu_duplicate_transaction:
-                        Transaction transaction = mTransactionsDbAdapter.getRecord(transactionId);
-                        Transaction duplicate = new Transaction(transaction, true);
-                        duplicate.setTime(System.currentTimeMillis());
-                        mTransactionsDbAdapter.addRecord(duplicate, DatabaseAdapter.UpdateMethod.insert);
-                        refresh();
+                        duplicateTransaction(transactionId);
                         return true;
 
                     case R.id.context_menu_move_transaction:
-                        long[] ids = new long[]{transactionId};
-                        FragmentManager fm = getChildFragmentManager();
-                        fm.setFragmentResultListener(BulkMoveDialogFragment.TAG, TransactionsListFragment.this, TransactionsListFragment.this);
-                        BulkMoveDialogFragment fragment = BulkMoveDialogFragment.newInstance(ids, mAccountUID);
-                        fragment.show(fm, BulkMoveDialogFragment.TAG);
+                        moveTransaction(transactionId);
                         return true;
 
                     default:
@@ -403,5 +400,37 @@ public class TransactionsListFragment extends Fragment implements
                 }
             }
         }
+    }
+
+    private void deleteTransaction(long transactionId) {
+        final Activity activity = requireActivity();
+        if (GnuCashApplication.shouldBackupTransactions(activity)) {
+            BackupManager.backupActiveBookAsync(activity, result -> {
+                mTransactionsDbAdapter.deleteRecord(transactionId);
+                WidgetConfigurationActivity.updateAllWidgets(activity);
+                refresh();
+                return null;
+            });
+        } else {
+            mTransactionsDbAdapter.deleteRecord(transactionId);
+            WidgetConfigurationActivity.updateAllWidgets(activity);
+            refresh();
+        }
+    }
+
+    private void duplicateTransaction(long transactionId) {
+        Transaction transaction = mTransactionsDbAdapter.getRecord(transactionId);
+        Transaction duplicate = new Transaction(transaction, true);
+        duplicate.setTime(System.currentTimeMillis());
+        mTransactionsDbAdapter.addRecord(duplicate, DatabaseAdapter.UpdateMethod.insert);
+        refresh();
+    }
+
+    private void moveTransaction(long transactionId) {
+        long[] ids = new long[]{transactionId};
+        FragmentManager fm = getParentFragmentManager();
+        fm.setFragmentResultListener(BulkMoveDialogFragment.TAG, TransactionsListFragment.this, TransactionsListFragment.this);
+        BulkMoveDialogFragment fragment = BulkMoveDialogFragment.newInstance(ids, mAccountUID);
+        fragment.show(fm, BulkMoveDialogFragment.TAG);
     }
 }

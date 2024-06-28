@@ -38,6 +38,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.coordinatorlayout.widget.CoordinatorLayout;
 import androidx.fragment.app.Fragment;
@@ -116,7 +117,7 @@ public class AccountsActivity extends BaseDrawerActivity implements OnAccountCli
     /**
      * Key for putting argument for tab into bundle arguments
      */
-    public static final String EXTRA_TAB_INDEX = "org.gnucash.android.extra.TAB_INDEX";
+    public static final String EXTRA_TAB_INDEX = BuildConfig.APPLICATION_ID + ".extra.TAB_INDEX";
 
     /**
      * Map containing fragments for the different tabs
@@ -284,12 +285,15 @@ public class AccountsActivity extends BaseDrawerActivity implements OnAccountCli
      */
     private void handleOpenFileIntent(Intent intent) {
         //when someone launches the app to view a (.gnucash or .gnca) file
-        Uri data = intent.getData();
+        final Uri data = intent.getData();
         if (data != null) {
-            BackupManager.backupActiveBook(this);
-            intent.setData(null);
-            new ImportAsyncTask(this).execute(data);
-            removeFirstRunFlag();
+            Activity activity = this;
+            BackupManager.backupActiveBookAsync(activity, result -> {
+                intent.setData(null);
+                new ImportAsyncTask(activity).execute(data);
+                removeFirstRunFlag(activity);
+                return null;
+            });
         }
     }
 
@@ -322,7 +326,7 @@ public class AccountsActivity extends BaseDrawerActivity implements OnAccountCli
      * <p>Also handles displaying the What's New dialog</p>
      */
     private void init() {
-        PreferenceManager.setDefaultValues(this, BooksDbAdapter.getInstance().getActiveBookUID(),
+        PreferenceManager.setDefaultValues(this, GnuCashApplication.getActiveBookUID(),
                 Context.MODE_PRIVATE, R.xml.fragment_transaction_preferences, true);
 
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
@@ -415,7 +419,7 @@ public class AccountsActivity extends BaseDrawerActivity implements OnAccountCli
     }
 
     @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         switch (item.getItemId()) {
             case android.R.id.home:
                 return super.onOptionsItemSelected(item);
@@ -457,9 +461,9 @@ public class AccountsActivity extends BaseDrawerActivity implements OnAccountCli
      * @see #importXmlFileFromIntent(Activity, Intent, TaskDelegate)
      */
     public static void startXmlFileChooser(Activity activity) {
-        Intent pickIntent = new Intent(Intent.ACTION_GET_CONTENT);
-        pickIntent.addCategory(Intent.CATEGORY_OPENABLE);
-        pickIntent.setType("*/*");
+        Intent pickIntent = new Intent(Intent.ACTION_GET_CONTENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("*/*");
         Intent chooser = Intent.createChooser(pickIntent, "Select GnuCash account file"); //todo internationalize string
 
         try {
@@ -478,9 +482,9 @@ public class AccountsActivity extends BaseDrawerActivity implements OnAccountCli
      * @see #startXmlFileChooser(Activity)
      */
     public static void startXmlFileChooser(Fragment fragment) {
-        Intent pickIntent = new Intent(Intent.ACTION_GET_CONTENT);
-        pickIntent.addCategory(Intent.CATEGORY_OPENABLE);
-        pickIntent.setType("*/*");
+        Intent pickIntent = new Intent(Intent.ACTION_GET_CONTENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("*/*");
         Intent chooser = Intent.createChooser(pickIntent, "Select GnuCash account file"); //todo internationalize string
 
         try {
@@ -538,12 +542,12 @@ public class AccountsActivity extends BaseDrawerActivity implements OnAccountCli
     /**
      * Removes the flag indicating that the app is being run for the first time.
      * This is called every time the app is started because the next time won't be the first time
+     * @param context the context.
      */
-    public static void removeFirstRunFlag() {
-        Context context = GnuCashApplication.getAppContext();
+    public static void removeFirstRunFlag(Context context) {
         Editor editor = PreferenceManager.getDefaultSharedPreferences(context).edit();
         editor.putBoolean(context.getString(R.string.key_first_run), false);
-        editor.commit();
+        editor.apply();
     }
 
 }

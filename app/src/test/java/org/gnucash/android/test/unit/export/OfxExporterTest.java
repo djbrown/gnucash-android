@@ -17,24 +17,27 @@ package org.gnucash.android.test.unit.export;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import android.content.Context;
 import android.database.sqlite.SQLiteDatabase;
 
 import org.gnucash.android.app.GnuCashApplication;
-import org.gnucash.android.db.BookDbHelper;
 import org.gnucash.android.db.DatabaseHelper;
 import org.gnucash.android.db.adapter.AccountsDbAdapter;
 import org.gnucash.android.db.adapter.BooksDbAdapter;
 import org.gnucash.android.export.ExportFormat;
 import org.gnucash.android.export.ExportParams;
 import org.gnucash.android.export.ofx.OfxExporter;
+import org.gnucash.android.export.ofx.OfxHelper;
 import org.gnucash.android.model.Account;
 import org.gnucash.android.model.Book;
 import org.gnucash.android.model.Money;
 import org.gnucash.android.model.Split;
 import org.gnucash.android.model.Transaction;
+import org.gnucash.android.test.unit.BookHelperTest;
 import org.gnucash.android.test.unit.testutil.ShadowCrashlytics;
 import org.gnucash.android.test.unit.testutil.ShadowUserVoice;
 import org.gnucash.android.util.TimestampHelper;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -42,26 +45,35 @@ import org.robolectric.RobolectricTestRunner;
 import org.robolectric.annotation.Config;
 
 import java.io.File;
+import java.util.Calendar;
 import java.util.List;
+import java.util.TimeZone;
 
 
 @RunWith(RobolectricTestRunner.class)
 //package is required so that resources can be found in dev mode
-@Config(sdk = 21,
-        packageName = "org.gnucash.android",
-        shadows = {ShadowCrashlytics.class, ShadowUserVoice.class})
-public class OfxExporterTest {
+@Config(sdk = 21, shadows = {ShadowCrashlytics.class, ShadowUserVoice.class})
+public class OfxExporterTest extends BookHelperTest {
+
+    private String mBookUID;
     private SQLiteDatabase mDb;
 
     @Before
     public void setUp() throws Exception {
-        BookDbHelper bookDbHelper = new BookDbHelper(GnuCashApplication.getAppContext());
-        BooksDbAdapter booksDbAdapter = new BooksDbAdapter(bookDbHelper.getWritableDatabase());
+        BooksDbAdapter booksDbAdapter = BooksDbAdapter.getInstance();
         Book testBook = new Book("testRootAccountUID");
         booksDbAdapter.addRecord(testBook);
+        mBookUID = testBook.getUID();
         DatabaseHelper databaseHelper =
-                new DatabaseHelper(GnuCashApplication.getAppContext(), testBook.getUID());
+            new DatabaseHelper(GnuCashApplication.getAppContext(), testBook.getUID());
         mDb = databaseHelper.getWritableDatabase();
+    }
+
+    @After
+    public void tearDown() {
+        BooksDbAdapter booksDbAdapter = BooksDbAdapter.getInstance();
+        booksDbAdapter.deleteBook(mBookUID);
+        mDb.close();
     }
 
     /**
@@ -70,11 +82,12 @@ public class OfxExporterTest {
      */
     @Test
     public void testWithNoTransactionsToExport_shouldNotCreateAnyFile() {
+        Context context = GnuCashApplication.getAppContext();
         ExportParams exportParameters = new ExportParams(ExportFormat.OFX);
         exportParameters.setExportStartTime(TimestampHelper.getTimestampFromEpochZero());
         exportParameters.setExportTarget(ExportParams.ExportTarget.SD_CARD);
         exportParameters.setDeleteTransactionsAfterExport(false);
-        OfxExporter exporter = new OfxExporter(exportParameters, mDb);
+        OfxExporter exporter = new OfxExporter(context, exportParameters, mBookUID);
         assertThat(exporter.generateExport()).isEmpty();
     }
 
@@ -83,6 +96,7 @@ public class OfxExporterTest {
      */
     //FIXME: test failing with NPE
     public void testGenerateOFXExport() {
+        Context context = GnuCashApplication.getAppContext();
         AccountsDbAdapter accountsDbAdapter = new AccountsDbAdapter(mDb);
 
         Account account = new Account("Basic Account");
@@ -97,12 +111,34 @@ public class OfxExporterTest {
         exportParameters.setExportTarget(ExportParams.ExportTarget.SD_CARD);
         exportParameters.setDeleteTransactionsAfterExport(false);
 
-        OfxExporter ofxExporter = new OfxExporter(exportParameters, mDb);
-        List<String> exportedFiles = ofxExporter.generateExport();
+        OfxExporter exporter = new OfxExporter(context, exportParameters, mBookUID);
+        List<String> exportedFiles = exporter.generateExport();
 
         assertThat(exportedFiles).hasSize(1);
         File file = new File(exportedFiles.get(0));
         assertThat(file).exists().hasExtension("ofx");
         assertThat(file.length()).isGreaterThan(0L);
+        file.delete();
+    }
+
+    @Test
+    public void testDateTime() {
+        TimeZone tz = TimeZone.getTimeZone("EST");
+        Calendar cal = Calendar.getInstance();
+        cal.setTimeZone(tz);
+        cal.set(Calendar.YEAR, 1996);
+        cal.set(Calendar.MONTH, Calendar.DECEMBER);
+        cal.set(Calendar.DAY_OF_MONTH, 5);
+        cal.set(Calendar.HOUR_OF_DAY, 13);
+        cal.set(Calendar.MINUTE, 22);
+        cal.set(Calendar.SECOND, 0);
+        cal.set(Calendar.MILLISECOND, 124);
+
+        String formatted = OfxHelper.getOfxFormattedTime(cal.getTimeInMillis(), tz);
+        assertThat(formatted).isEqualTo("19961205132200.124[-5:EST]");
+
+        cal.set(Calendar.MONTH, Calendar.OCTOBER);
+        formatted = OfxHelper.getOfxFormattedTime(cal.getTimeInMillis(), tz);
+        assertThat(formatted).isEqualTo("19961005142200.124[-4:EDT]");
     }
 }

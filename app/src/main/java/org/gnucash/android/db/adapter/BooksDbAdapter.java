@@ -24,6 +24,7 @@ import android.database.sqlite.SQLiteStatement;
 import android.net.Uri;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.VisibleForTesting;
 
 import org.gnucash.android.R;
 import org.gnucash.android.app.GnuCashApplication;
@@ -172,10 +173,10 @@ public class BooksDbAdapter extends DatabaseAdapter<Book> {
                 "1")) {
             if (cursor.getCount() == 0) {
                 NoActiveBookFoundException e = new NoActiveBookFoundException(
-                        "There is no active book in the app."
-                                + "This should NEVER happen, fix your bugs!\n"
+                        "There is no active book in the app.\n"
+                                + "This should NEVER happen - fix your bugs!\n"
                                 + getNoActiveBookFoundExceptionInfo());
-                e.printStackTrace();
+                Timber.e(e);
                 throw e;
             }
             cursor.moveToFirst();
@@ -269,7 +270,8 @@ public class BooksDbAdapter extends DatabaseAdapter<Book> {
         return bookDatabases;
     }
 
-    private boolean isBookDatabase(String databaseName) {
+    @VisibleForTesting
+    public static boolean isBookDatabase(String databaseName) {
         return databaseName.matches("[a-z0-9]{32}"); // UID regex
     }
 

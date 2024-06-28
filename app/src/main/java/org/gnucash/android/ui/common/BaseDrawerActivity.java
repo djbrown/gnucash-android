@@ -34,6 +34,7 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import androidx.annotation.LayoutRes;
+import androidx.annotation.NonNull;
 import androidx.annotation.StringRes;
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.ActionBarDrawerToggle;
@@ -93,7 +94,7 @@ public abstract class BaseDrawerActivity extends PasscodeLockActivity {
 
     protected ActionBarDrawerToggle mDrawerToggle;
 
-    public static final int REQUEST_OPEN_DOCUMENT = 0x20;
+    private static final int REQUEST_OPEN_DOCUMENT = 0x20;
 
     private class DrawerItemClickListener implements NavigationView.OnNavigationItemSelectedListener {
 
@@ -112,7 +113,7 @@ public abstract class BaseDrawerActivity extends PasscodeLockActivity {
 
         //if a parameter was passed to open an account within a specific book, then switch
         String bookUID = getIntent().getStringExtra(UxArgument.BOOK_UID);
-        if (bookUID != null && !bookUID.equals(BooksDbAdapter.getInstance().getActiveBookUID())) {
+        if (bookUID != null && !bookUID.equals(GnuCashApplication.getActiveBookUID())) {
             BookUtils.activateBook(this, bookUID);
         }
 
@@ -219,7 +220,7 @@ public abstract class BaseDrawerActivity extends PasscodeLockActivity {
     }
 
     @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         if (item.getItemId() == android.R.id.home) {
             if (!mDrawerLayout.isDrawerOpen(mNavigationView))
                 mDrawerLayout.openDrawer(mNavigationView);
@@ -244,12 +245,12 @@ public abstract class BaseDrawerActivity extends PasscodeLockActivity {
     protected void onDrawerMenuItemClicked(int itemId) {
         switch (itemId) {
             case R.id.nav_item_open: { //Open... files
-                //use the storage access framework
-                Intent openDocument = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-                openDocument.addCategory(Intent.CATEGORY_OPENABLE);
-                openDocument.setType("text/*|application/*");
                 String[] mimeTypes = {"text/*", "application/*"};
-                openDocument.putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes);
+                //use the storage access framework
+                Intent openDocument = new Intent(Intent.ACTION_OPEN_DOCUMENT)
+                    .addCategory(Intent.CATEGORY_OPENABLE)
+                    .setType("text/*|application/*")
+                    .putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes);
                 startActivityForResult(openDocument, REQUEST_OPEN_DOCUMENT);
             }
             break;
@@ -348,7 +349,7 @@ public abstract class BaseDrawerActivity extends PasscodeLockActivity {
         popup.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener() {
 
             @Override
-            public boolean onMenuItemClick(MenuItem item) {
+            public boolean onMenuItemClick(@NonNull MenuItem item) {
                 int id = item.getItemId();
                 if (id == ID_MANAGE_BOOKS) {
                     Intent intent = new Intent(context, PreferenceActivity.class);

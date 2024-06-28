@@ -16,8 +16,8 @@
 
 package org.gnucash.android.export.csv;
 
+import android.content.Context;
 import android.database.Cursor;
-import android.database.sqlite.SQLiteDatabase;
 
 import androidx.annotation.NonNull;
 
@@ -31,16 +31,14 @@ import org.gnucash.android.model.Transaction;
 import org.gnucash.android.model.TransactionType;
 import org.gnucash.android.util.PreferencesHelper;
 import org.gnucash.android.util.TimestampHelper;
+import org.joda.time.format.DateTimeFormat;
+import org.joda.time.format.DateTimeFormatter;
 
 import java.io.FileWriter;
 import java.io.IOException;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
 import java.util.Arrays;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 import timber.log.Timber;
@@ -52,29 +50,22 @@ import timber.log.Timber;
  */
 public class CsvTransactionsExporter extends Exporter {
 
-    private char mCsvSeparator;
+    private final char mCsvSeparator;
 
-    private DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
-
-    /**
-     * Construct a new exporter with export parameters
-     *
-     * @param params Parameters for the export
-     */
-    public CsvTransactionsExporter(ExportParams params) {
-        super(params, null);
-        mCsvSeparator = params.getCsvSeparator();
-    }
+    private final DateTimeFormatter dateFormat = DateTimeFormat.forPattern("yyyy-MM-dd");
 
     /**
      * Overloaded constructor.
      * Creates an exporter with an already open database instance.
      *
+     * @param context The context.
      * @param params Parameters for the export
-     * @param db     SQLite database
+     * @param bookUID The book UID.
      */
-    public CsvTransactionsExporter(ExportParams params, SQLiteDatabase db) {
-        super(params, db);
+    public CsvTransactionsExporter(@NonNull Context context,
+                                   @NonNull ExportParams params,
+                                   @NonNull String bookUID) {
+        super(context, params, bookUID);
         mCsvSeparator = params.getCsvSeparator();
     }
 
@@ -82,8 +73,9 @@ public class CsvTransactionsExporter extends Exporter {
     public List<String> generateExport() throws ExporterException {
         String outputFile = getExportCacheFilePath();
 
-        try (CsvWriter csvWriter = new CsvWriter(new FileWriter(outputFile), "" + mCsvSeparator)) {
+        try (CsvWriter csvWriter = new CsvWriter(new FileWriter(outputFile), String.valueOf(mCsvSeparator))) {
             generateExport(csvWriter);
+            close();
         } catch (IOException ex) {
             Timber.e(ex, "Error exporting CSV");
             throw new ExporterException(mExportParams, ex);
@@ -133,9 +125,9 @@ public class CsvTransactionsExporter extends Exporter {
             String sign = split.getType() == TransactionType.CREDIT ? "-" : "";
             writer.writeToken(sign + split.getQuantity().formattedString());
             writer.writeToken(sign + split.getQuantity().toLocaleString());
-            writer.writeToken("" + split.getReconcileState());
+            writer.writeToken(String.valueOf(split.getReconcileState()));
             if (split.getReconcileState() == Split.FLAG_RECONCILED) {
-                String recDateString = dateFormat.format(new Date(split.getReconcileDate().getTime()));
+                String recDateString = dateFormat.print(split.getReconcileDate().getTime());
                 writer.writeToken(recDateString);
             } else {
                 writer.writeToken(null);
@@ -157,8 +149,7 @@ public class CsvTransactionsExporter extends Exporter {
             Timber.d("Exporting %d transactions to CSV", cursor.getCount());
             while (cursor.moveToNext()) {
                 Transaction transaction = mTransactionsDbAdapter.buildModelInstance(cursor);
-                Date date = new Date(transaction.getTimeMillis());
-                csvWriter.writeToken(dateFormat.format(date));
+                csvWriter.writeToken(dateFormat.print(transaction.getTimeMillis()));
                 csvWriter.writeToken(transaction.getUID());
                 csvWriter.writeToken(null);  //Transaction number
 
@@ -170,6 +161,7 @@ public class CsvTransactionsExporter extends Exporter {
                 csvWriter.writeToken(null); // Action
                 writeSplitsToCsv(transaction.getSplits(), csvWriter);
             }
+            cursor.close();
 
             PreferencesHelper.setLastExportTime(TimestampHelper.getTimestampFromNow());
         } catch (Exception e) {

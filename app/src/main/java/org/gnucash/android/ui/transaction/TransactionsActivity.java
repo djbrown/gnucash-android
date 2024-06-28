@@ -21,8 +21,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
 import android.graphics.drawable.ColorDrawable;
-import android.os.AsyncTask;
-import android.os.Build;
 import android.os.Bundle;
 import android.text.format.DateUtils;
 import android.util.SparseArray;
@@ -36,10 +34,11 @@ import android.widget.SpinnerAdapter;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.coordinatorlayout.widget.CoordinatorLayout;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentManager;
+import androidx.fragment.app.FragmentResultListener;
 import androidx.fragment.app.FragmentStatePagerAdapter;
-import androidx.viewpager.widget.PagerAdapter;
 import androidx.viewpager.widget.ViewPager;
 
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
@@ -52,7 +51,6 @@ import org.gnucash.android.db.adapter.AccountsDbAdapter;
 import org.gnucash.android.db.adapter.TransactionsDbAdapter;
 import org.gnucash.android.model.Account;
 import org.gnucash.android.model.Money;
-import org.gnucash.android.ui.account.AccountsActivity;
 import org.gnucash.android.ui.account.AccountsListFragment;
 import org.gnucash.android.ui.account.DeleteAccountDialogFragment;
 import org.gnucash.android.ui.account.OnAccountClickedListener;
@@ -60,14 +58,13 @@ import org.gnucash.android.ui.common.BaseDrawerActivity;
 import org.gnucash.android.ui.common.FormActivity;
 import org.gnucash.android.ui.common.Refreshable;
 import org.gnucash.android.ui.common.UxArgument;
-import org.gnucash.android.ui.util.AccountBalanceTask;
 import org.gnucash.android.util.BackupManager;
 import org.gnucash.android.util.QualifiedAccountNameCursorAdapter;
 import org.joda.time.LocalDate;
+import org.joda.time.format.DateTimeFormat;
+import org.joda.time.format.DateTimeFormatter;
 
 import java.math.BigDecimal;
-import java.text.SimpleDateFormat;
-import java.util.Date;
 
 import butterknife.BindView;
 import timber.log.Timber;
@@ -78,7 +75,7 @@ import timber.log.Timber;
  * @author Ngewi Fet <ngewif@gmail.com>
  */
 public class TransactionsActivity extends BaseDrawerActivity implements
-        Refreshable, OnAccountClickedListener, OnTransactionClickedListener {
+    Refreshable, OnAccountClickedListener, OnTransactionClickedListener, FragmentResultListener {
 
     /**
      * ViewPager index for sub-accounts fragment
@@ -94,7 +91,7 @@ public class TransactionsActivity extends BaseDrawerActivity implements
      * Number of pages to show
      */
     private static final int DEFAULT_NUM_PAGES = 2;
-    private static SimpleDateFormat mDayMonthDateFormat = new SimpleDateFormat("EEE, d MMM");
+    private static DateTimeFormatter dayMonthFormatter = DateTimeFormat.forPattern("EEE, d MMM");
 
     /**
      * GUID of {@link Account} whose transactions are displayed
@@ -160,8 +157,17 @@ public class TransactionsActivity extends BaseDrawerActivity implements
         }
     };
 
-    private PagerAdapter mPagerAdapter;
+    private AccountViewPagerAdapter mPagerAdapter;
 
+    @Override
+    public void onFragmentResult(@NonNull String requestKey, @NonNull Bundle result) {
+        if (DeleteAccountDialogFragment.TAG.equals(requestKey)) {
+            boolean refresh = result.getBoolean(Refreshable.EXTRA_REFRESH);
+            if (refresh) {
+                finish();
+            }
+        }
+    }
 
     /**
      * Adapter for managing the sub-account and transaction fragment pages in the accounts view
@@ -172,16 +178,17 @@ public class TransactionsActivity extends BaseDrawerActivity implements
             super(fm);
         }
 
+        @NonNull
         @Override
-        public Fragment getItem(int i) {
+        public Fragment getItem(int position) {
             if (mIsPlaceholderAccount) {
                 Fragment transactionsListFragment = prepareSubAccountsListFragment();
-                mFragmentPageReferenceMap.put(i, (Refreshable) transactionsListFragment);
+                mFragmentPageReferenceMap.put(position, (Refreshable) transactionsListFragment);
                 return transactionsListFragment;
             }
 
             Fragment currentFragment;
-            switch (i) {
+            switch (position) {
                 case INDEX_SUB_ACCOUNTS_FRAGMENT:
                     currentFragment = prepareSubAccountsListFragment();
                     break;
@@ -192,12 +199,12 @@ public class TransactionsActivity extends BaseDrawerActivity implements
                     break;
             }
 
-            mFragmentPageReferenceMap.put(i, (Refreshable) currentFragment);
+            mFragmentPageReferenceMap.put(position, (Refreshable) currentFragment);
             return currentFragment;
         }
 
         @Override
-        public void destroyItem(ViewGroup container, int position, Object object) {
+        public void destroyItem(@NonNull ViewGroup container, int position, @NonNull Object object) {
             super.destroyItem(container, position, object);
             mFragmentPageReferenceMap.remove(position);
         }
@@ -425,7 +432,7 @@ public class TransactionsActivity extends BaseDrawerActivity implements
     }
 
     @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         switch (item.getItemId()) {
             case android.R.id.home:
                 return super.onOptionsItemSelected(item);
@@ -469,7 +476,14 @@ public class TransactionsActivity extends BaseDrawerActivity implements
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        mAccountsCursor.close();
+        close();
+    }
+
+    private void close() {
+        if (mAccountsCursor != null) {
+            mAccountsCursor.close();
+            mAccountsCursor = null;
+        }
     }
 
     /**
@@ -510,11 +524,11 @@ public class TransactionsActivity extends BaseDrawerActivity implements
     public static String getPrettyDateFormat(Context context, long dateMillis) {
         LocalDate transactionTime = new LocalDate(dateMillis);
         LocalDate today = new LocalDate();
-        String prettyDateText = null;
+        final String prettyDateText;
         if (transactionTime.compareTo(today.minusDays(1)) >= 0 && transactionTime.compareTo(today.plusDays(1)) <= 0) {
             prettyDateText = DateUtils.getRelativeTimeSpanString(dateMillis, System.currentTimeMillis(), DateUtils.DAY_IN_MILLIS).toString();
         } else if (transactionTime.getYear() == today.getYear()) {
-            prettyDateText = mDayMonthDateFormat.format(new Date(dateMillis));
+            prettyDateText = dayMonthFormatter.print(dateMillis);
         } else {
             prettyDateText = DateUtils.formatDateTime(context, dateMillis, DateUtils.FORMAT_ABBREV_MONTH | DateUtils.FORMAT_SHOW_YEAR);
         }
@@ -524,7 +538,7 @@ public class TransactionsActivity extends BaseDrawerActivity implements
 
     @Override
     public void createNewTransaction(String accountUID) {
-        Intent createTransactionIntent = new Intent(this.getApplicationContext(), FormActivity.class);
+        Intent createTransactionIntent = new Intent(this, FormActivity.class);
         createTransactionIntent.setAction(Intent.ACTION_INSERT_OR_EDIT);
         createTransactionIntent.putExtra(UxArgument.SELECTED_ACCOUNT_UID, accountUID);
         createTransactionIntent.putExtra(UxArgument.FORM_TYPE, FormActivity.FormType.TRANSACTION.name());
@@ -533,7 +547,7 @@ public class TransactionsActivity extends BaseDrawerActivity implements
 
     @Override
     public void editTransaction(String transactionUID) {
-        Intent createTransactionIntent = new Intent(this.getApplicationContext(), FormActivity.class);
+        Intent createTransactionIntent = new Intent(this, FormActivity.class);
         createTransactionIntent.setAction(Intent.ACTION_INSERT_OR_EDIT);
         createTransactionIntent.putExtra(UxArgument.SELECTED_ACCOUNT_UID, mAccountUID);
         createTransactionIntent.putExtra(UxArgument.SELECTED_TRANSACTION_UID, transactionUID);
@@ -543,7 +557,7 @@ public class TransactionsActivity extends BaseDrawerActivity implements
 
     @Override
     public void accountSelected(String accountUID) {
-        Intent restartIntent = new Intent(this.getApplicationContext(), TransactionsActivity.class);
+        Intent restartIntent = new Intent(this, TransactionsActivity.class);
         restartIntent.setAction(Intent.ACTION_VIEW);
         restartIntent.putExtra(UxArgument.SELECTED_ACCOUNT_UID, accountUID);
         startActivity(restartIntent);
@@ -556,14 +570,17 @@ public class TransactionsActivity extends BaseDrawerActivity implements
      *
      * @param accountUID The UID of the account
      */
-    private void tryDeleteAccount(String accountUID) {
+    private void tryDeleteAccount(final String accountUID) {
         if (mAccountsDbAdapter.getTransactionCount(accountUID) > 0 || mAccountsDbAdapter.getSubAccountCount(accountUID) > 0) {
             showConfirmationDialog(accountUID);
         } else {
-            BackupManager.backupActiveBook();
-            // Avoid calling AccountsDbAdapter.deleteRecord(long). See #654
-            mAccountsDbAdapter.deleteRecord(accountUID);
-            refresh();
+            BackupManager.backupActiveBookAsync(this, result -> {
+                // Avoid calling AccountsDbAdapter.deleteRecord(long). See #654
+                if (mAccountsDbAdapter.deleteRecord(accountUID)) {
+                    finish();
+                }
+                return null;
+            });
         }
     }
 
@@ -573,8 +590,10 @@ public class TransactionsActivity extends BaseDrawerActivity implements
      * @param accountUID Unique ID of account to be deleted after confirmation
      */
     private void showConfirmationDialog(String accountUID) {
+        FragmentManager fm = getSupportFragmentManager();
         DeleteAccountDialogFragment alertFragment =
             DeleteAccountDialogFragment.newInstance(accountUID);
-        alertFragment.show(getSupportFragmentManager(), "delete_confirmation_dialog");
+        fm.setFragmentResultListener(DeleteAccountDialogFragment.TAG, this, this);
+        alertFragment.show(fm, DeleteAccountDialogFragment.TAG);
     }
 }

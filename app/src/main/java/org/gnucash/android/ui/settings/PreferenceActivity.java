@@ -28,12 +28,14 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.app.ActionBar;
 import androidx.core.os.BuildCompat;
 import androidx.fragment.app.Fragment;
+import androidx.fragment.app.FragmentFactory;
 import androidx.fragment.app.FragmentManager;
 import androidx.fragment.app.FragmentTransaction;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceFragmentCompat;
 import androidx.preference.PreferenceManager;
 
+import org.gnucash.android.BuildConfig;
 import org.gnucash.android.R;
 import org.gnucash.android.app.GnuCashApplication;
 import org.gnucash.android.db.adapter.BooksDbAdapter;
@@ -48,7 +50,7 @@ import timber.log.Timber;
 public class PreferenceActivity extends PasscodeLockActivity implements
         PreferenceFragmentCompat.OnPreferenceStartFragmentCallback {
 
-    public static final String ACTION_MANAGE_BOOKS = "org.gnucash.android.intent.action.MANAGE_BOOKS";
+    public static final String ACTION_MANAGE_BOOKS = BuildConfig.APPLICATION_ID + ".action.MANAGE_BOOKS";
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -57,11 +59,13 @@ public class PreferenceActivity extends PasscodeLockActivity implements
 
         ButterKnife.bind(this);
 
-        String action = getIntent().getAction();
-        if (action != null && action.equals(ACTION_MANAGE_BOOKS)) {
-            loadFragment(new BookManagerFragment(), false);
-        } else {
-            loadFragment(new PreferenceHeadersFragment(), false);
+        if (savedInstanceState == null || getSupportFragmentManager().getFragments().isEmpty()) {
+            String action = getIntent().getAction();
+            if (action != null && action.equals(ACTION_MANAGE_BOOKS)) {
+                loadFragment(new BookManagerFragment(), false);
+            } else {
+                loadFragment(new PreferenceHeadersFragment(), false);
+            }
         }
 
         ActionBar actionBar = getSupportActionBar();
@@ -85,11 +89,11 @@ public class PreferenceActivity extends PasscodeLockActivity implements
         String fragmentClassName = pref.getFragment();
         if (TextUtils.isEmpty(fragmentClassName)) return false;
         try {
-            Class<?> clazz = Class.forName(fragmentClassName);
-            Fragment fragment = (Fragment) clazz.newInstance();
+            FragmentFactory factory = getSupportFragmentManager().getFragmentFactory();
+            Fragment fragment = factory.instantiate(getClassLoader(), fragmentClassName);
             loadFragment(fragment, true);
             return true;
-        } catch (ClassNotFoundException | InstantiationException | IllegalAccessException e) {
+        } catch (Fragment.InstantiationException e) {
             Timber.e(e);
             //if we do not have a matching class, do nothing
         }
@@ -110,7 +114,7 @@ public class PreferenceActivity extends PasscodeLockActivity implements
     }
 
     @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         switch (item.getItemId()) {
             case android.R.id.home:
                 handleBackPressed();
@@ -142,7 +146,7 @@ public class PreferenceActivity extends PasscodeLockActivity implements
      * @return Shared preferences file
      */
     public static SharedPreferences getActiveBookSharedPreferences() {
-        return getBookSharedPreferences(BooksDbAdapter.getInstance().getActiveBookUID());
+        return getBookSharedPreferences(GnuCashApplication.getActiveBookUID());
     }
 
     /**

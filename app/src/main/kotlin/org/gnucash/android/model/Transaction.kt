@@ -44,11 +44,6 @@ class Transaction : BaseModel {
     private var _splitList: MutableList<Split> = ArrayList()
 
     /**
-     * Name describing the transaction
-     */
-    private var _description: String? = null
-
-    /**
      * An extra note giving details about the transaction
      */
     var note: String? = ""
@@ -136,7 +131,7 @@ class Transaction : BaseModel {
         if (!imbalance.isAmountZero) {
             // yes, this is on purpose the account UID is set to the currency.
             // This should be overridden before saving to db
-            val split = Split(imbalance, _commodity!!.currencyCode)
+            val split = Split(imbalance, commodity.currencyCode)
             split.type = if (imbalance.isNegative) TransactionType.CREDIT else TransactionType.DEBIT
             addSplit(split)
             return split
@@ -231,13 +226,13 @@ class Transaction : BaseModel {
      */
     private val imbalance: Money
         get() {
-            var imbalance = createZeroInstance(_commodity!!.currencyCode)
+            var imbalance = createZeroInstance(commodity.currencyCode)
             for (split in _splitList) {
-                if (split.quantity!!.commodity!! != _commodity) {
+                if (split.quantity!!.commodity != _commodity) {
                     // this may happen when importing XML exported from GNCA before 2.0.0
                     // these transactions should only be imported from XML exported from GNC desktop
                     // so imbalance split should not be generated for them
-                    return createZeroInstance(_commodity!!.currencyCode)
+                    return createZeroInstance(commodity.currencyCode)
                 }
                 val amount = split.value!!
                 imbalance = if (split.type === TransactionType.DEBIT) {
@@ -255,7 +250,7 @@ class Transaction : BaseModel {
      * @return ISO 4217 currency code string
      */
     val currencyCode: String
-        get() = _commodity!!.currencyCode
+        get() = commodity.currencyCode
 
     /**
      * The commodity for this transaction
@@ -269,10 +264,9 @@ class Transaction : BaseModel {
     /**
      * A description of the transaction
      */
-    var description: String?
-        get() = _description
-        set(description) {
-            _description = description!!.trim { it <= ' ' }
+    var description: String? = ""
+        set(value) {
+            field = value?.trim { it <= ' ' }.orEmpty()
         }
 
     /**
@@ -319,11 +313,7 @@ class Transaction : BaseModel {
         transactionNode.appendChild(datePosted)
 
         val dateUser = doc.createElement(OfxHelper.TAG_DATE_USER)
-        dateUser.appendChild(
-            doc.createTextNode(
-                OfxHelper.getOfxFormattedTime(timeMillis)
-            )
-        )
+        dateUser.appendChild(doc.createTextNode(OfxHelper.getOfxFormattedTime(timeMillis)))
         transactionNode.appendChild(dateUser)
 
         val amount = doc.createElement(OfxHelper.TAG_TRANSACTION_AMOUNT)
@@ -335,7 +325,7 @@ class Transaction : BaseModel {
         transactionNode.appendChild(transID)
 
         val name = doc.createElement(OfxHelper.TAG_NAME)
-        name.appendChild(doc.createTextNode(_description))
+        name.appendChild(doc.createTextNode(description))
         transactionNode.appendChild(name)
 
         if (note != null && note!!.isNotEmpty()) {
@@ -388,21 +378,21 @@ class Transaction : BaseModel {
          *
          */
         @Deprecated("use {@link Split}s instead")
-        const val EXTRA_ACCOUNT_UID = "org.gnucash.android.extra.account_uid"
+        const val EXTRA_ACCOUNT_UID = "${BuildConfig.APPLICATION_ID}.extra.account_uid"
 
         /**
          * Key for specifying the double entry account
          *
          */
         @Deprecated("use {@link Split}s instead")
-        const val EXTRA_DOUBLE_ACCOUNT_UID = "org.gnucash.android.extra.double_account_uid"
+        const val EXTRA_DOUBLE_ACCOUNT_UID = "${BuildConfig.APPLICATION_ID}.extra.double_account_uid"
 
         /**
          * Key for identifying the amount of the transaction through an Intent
          *
          */
         @Deprecated("use {@link Split}s instead")
-        const val EXTRA_AMOUNT = "org.gnucash.android.extra.amount"
+        const val EXTRA_AMOUNT = "${BuildConfig.APPLICATION_ID}.extra.amount"
 
         /**
          * Extra key for the transaction type.
@@ -410,14 +400,14 @@ class Transaction : BaseModel {
          *
          */
         @Deprecated("use {@link Split}s instead")
-        const val EXTRA_TRANSACTION_TYPE = "org.gnucash.android.extra.transaction_type"
+        const val EXTRA_TRANSACTION_TYPE = "${BuildConfig.APPLICATION_ID}.extra.transaction_type"
 
         /**
          * Argument key for passing splits as comma-separated multi-line list and each line is a split.
          * The line format is: <type>;<amount>;<account_uid>
          * The amount should be formatted in the US Locale
          */
-        const val EXTRA_SPLITS = "org.gnucash.android.extra.transaction.splits"
+        const val EXTRA_SPLITS = "${BuildConfig.APPLICATION_ID}.extra.transaction.splits"
 
         /**
          * Computes the balance of the splits belonging to a particular account.
@@ -439,7 +429,7 @@ class Transaction : BaseModel {
             var balance = createZeroInstance(accountCurrencyCode)
             for (split in splitList) {
                 if (split.accountUID != accountUID) continue
-                val amount: Money = if (split.value!!.commodity!!.currencyCode == accountCurrencyCode) {
+                val amount: Money = if (split.value!!.commodity.currencyCode == accountCurrencyCode) {
                     split.value!!
                 } else { //if this split belongs to the account, then either its value or quantity is in the account currency
                     split.quantity!!

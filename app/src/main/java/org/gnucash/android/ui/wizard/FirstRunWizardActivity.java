@@ -216,11 +216,11 @@ public class FirstRunWizardActivity extends AppCompatActivity implements
      * <p>This method also removes the first run flag from the application</p>
      */
     private void createAccountsAndFinish() {
-        AccountsActivity.removeFirstRunFlag();
+        AccountsActivity.removeFirstRunFlag(this);
 
         if (mAccountOptions.equals(getString(R.string.wizard_option_create_default_accounts))) {
             //save the UID of the active book, and then delete it after successful import
-            String bookUID = BooksDbAdapter.getInstance().getActiveBookUID();
+            String bookUID = GnuCashApplication.getActiveBookUID();
             AccountsActivity.createDefaultAccounts(mCurrencyCode, FirstRunWizardActivity.this);
             BooksDbAdapter.getInstance().deleteBook(bookUID); //a default book is usually created
             finish();

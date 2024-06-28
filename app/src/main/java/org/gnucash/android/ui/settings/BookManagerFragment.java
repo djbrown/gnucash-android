@@ -16,8 +16,12 @@
 
 package org.gnucash.android.ui.settings;
 
+import static org.gnucash.android.app.IntentExtKt.takePersistableUriPermission;
+
+import android.app.Activity;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.Intent;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.os.Bundle;
@@ -71,6 +75,8 @@ import timber.log.Timber;
 public class BookManagerFragment extends ListFragment implements
         LoaderManager.LoaderCallbacks<Cursor>, Refreshable, FragmentResultListener {
 
+    private static final int REQUEST_OPEN_DOCUMENT = 0x20;
+
     private SimpleCursorAdapter mCursorAdapter;
 
     @Override
@@ -110,15 +116,26 @@ public class BookManagerFragment extends ListFragment implements
     }
 
     @Override
-    public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
+    public void onCreateOptionsMenu(@NonNull Menu menu, @NonNull MenuInflater inflater) {
+        super.onCreateOptionsMenu(menu, inflater);
         inflater.inflate(R.menu.book_list_actions, menu);
     }
 
     @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         switch (item.getItemId()) {
             case R.id.menu_create_book:
-                AccountsActivity.createDefaultAccounts(GnuCashApplication.getDefaultCurrencyCode(), getActivity());
+                AccountsActivity.createDefaultAccounts(GnuCashApplication.getDefaultCurrencyCode(), requireActivity());
+                return true;
+
+            case R.id.menu_open_book:
+                String[] mimeTypes = {"text/*", "application/*"};
+                //use the storage access framework
+                Intent openDocument = new Intent(Intent.ACTION_OPEN_DOCUMENT)
+                    .addCategory(Intent.CATEGORY_OPENABLE)
+                    .setType("text/*|application/*")
+                    .putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes);
+                startActivityForResult(openDocument, REQUEST_OPEN_DOCUMENT);
                 return true;
 
             default:
@@ -164,7 +181,24 @@ public class BookManagerFragment extends ListFragment implements
         }
     }
 
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        if (resultCode == Activity.RESULT_OK) {
+            if (requestCode == REQUEST_OPEN_DOCUMENT) {
+                Activity context = requireActivity();
+                final int takeFlags = data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                context.getContentResolver().takePersistableUriPermission(data.getData(), takeFlags);
+                AccountsActivity.importXmlFileFromIntent(context, data, null);
+                takePersistableUriPermission(context, data);
+                return;
+            }
+        }
+        super.onActivityResult(requestCode, resultCode, data);
+    }
+
     private class BooksCursorAdapter extends SimpleCursorAdapter {
+
+        private final String activeBookUID = GnuCashApplication.getActiveBookUID();
 
         BooksCursorAdapter(Context context, int layout, Cursor c, String[] from, int[] to) {
             super(context, layout, c, from, to, 0);
@@ -180,11 +214,16 @@ public class BookManagerFragment extends ListFragment implements
             setStatisticsText(view, bookUID);
             setUpMenu(view, context, cursor, bookUID);
 
+            if (activeBookUID.equals(bookUID)) {
+                ((TextView) view.findViewById(R.id.primary_text))
+                    .setTextColor(ContextCompat.getColor(context, R.color.theme_primary));
+            }
+
             view.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
                     //do nothing if the active book is tapped
-                    if (!BooksDbAdapter.getInstance().getActiveBookUID().equals(bookUID)) {
+                    if (!activeBookUID.equals(bookUID)) {
                         BookUtils.loadBook(v.getContext(), bookUID);
                         requireActivity().finish();
                     }
@@ -205,7 +244,7 @@ public class BookManagerFragment extends ListFragment implements
 
                     popupMenu.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener() {
                         @Override
-                        public boolean onMenuItemClick(MenuItem item) {
+                        public boolean onMenuItemClick(@NonNull MenuItem item) {
                             switch (item.getItemId()) {
                                 case R.id.ctx_menu_rename_book:
                                     return handleMenuRenameBook(bookName, bookUID);
@@ -220,7 +259,7 @@ public class BookManagerFragment extends ListFragment implements
                         }
                     });
 
-                    String activeBookUID = BooksDbAdapter.getInstance().getActiveBookUID();
+                    String activeBookUID = GnuCashApplication.getActiveBookUID();
                     if (activeBookUID.equals(bookUID)) {//we cannot delete the active book
                         popupMenu.getMenu().findItem(R.id.ctx_menu_delete_book).setEnabled(false);
                     }
@@ -230,7 +269,7 @@ public class BookManagerFragment extends ListFragment implements
         }
 
         private boolean handleMenuDeleteBook(final String bookUID) {
-            FragmentManager fm = getChildFragmentManager();
+            FragmentManager fm = getParentFragmentManager();
             fm.setFragmentResultListener(DeleteBookConfirmationDialog.TAG, BookManagerFragment.this, BookManagerFragment.this);
             DeleteBookConfirmationDialog dialog = DeleteBookConfirmationDialog.newInstance(bookUID);
             dialog.show(fm, DeleteBookConfirmationDialog.TAG);
@@ -297,11 +336,6 @@ public class BookManagerFragment extends ListFragment implements
             String stats = accountStats + ", " + transactionStats;
             TextView statsText = (TextView) view.findViewById(R.id.secondary_text);
             statsText.setText(stats);
-
-            if (bookUID.equals(BooksDbAdapter.getInstance().getActiveBookUID())) {
-                ((TextView) view.findViewById(R.id.primary_text))
-                        .setTextColor(ContextCompat.getColor(context, R.color.theme_primary));
-            }
         }
     }
 

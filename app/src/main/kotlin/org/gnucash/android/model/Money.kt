@@ -15,14 +15,15 @@
  */
 package org.gnucash.android.model
 
-import org.gnucash.android.model.Commodity.Companion.getInstance
+import android.os.Build
+import android.os.Parcel
+import android.os.Parcelable
 import java.math.BigDecimal
 import java.math.BigInteger
 import java.math.RoundingMode
 import java.text.DecimalFormat
 import java.text.NumberFormat
 import java.util.Locale
-import kotlin.jvm.Throws
 import timber.log.Timber
 
 /**
@@ -36,11 +37,11 @@ import timber.log.Timber
  *
  * @author Ngewi Fet<ngewif@gmail.com>
  */
-class Money : Number, Comparable<Money> {
+class Money : Number, Comparable<Money>, Parcelable {
     /**
      * Currency of the account
      */
-    var commodity: Commodity? = null
+    var commodity: Commodity = Commodity.DEFAULT_COMMODITY
         private set
 
     /**
@@ -60,10 +61,31 @@ class Money : Number, Comparable<Money> {
      * @param amount    Value of the amount
      * @param commodity Commodity of the money
      */
-    constructor(amount: BigDecimal, commodity: Commodity?) {
+    constructor(amount: BigDecimal, commodity: Commodity) {
+        //commodity has to be set first. Because we use it's scale
         this.commodity = commodity
-        setAmount(amount) //commodity has to be set first. Because we use it's scale
+        setAmount(amount)
     }
+
+    /**
+     * Constructs a new money amount given the numerator and denominator of the amount.
+     * The rounding mode used for the division is [BigDecimal.ROUND_HALF_EVEN]
+     *
+     * @param amount    Value of the amount
+     * @param currencyCode 3-character currency code string
+     */
+    constructor(amount: BigDecimal, currencyCode: String?) : this(
+        amount,
+        Commodity.getInstance(currencyCode)!!
+    )
+
+    /**
+     * Creates a new money amount
+     *
+     * @param amount    Value of the amount
+     * @param commodity Commodity of the money
+     */
+    constructor(amount: Double, commodity: Commodity) : this(BigDecimal.valueOf(amount), commodity)
 
     /**
      * Overloaded constructor.
@@ -72,11 +94,10 @@ class Money : Number, Comparable<Money> {
      * @param amount       Numerical value of the Money
      * @param currencyCode Currency code as specified by ISO 4217
      */
-    constructor(amount: String?, currencyCode: String?) {
-        //commodity has to be set first
-        commodity = Commodity.getInstance(currencyCode)
-        setAmount(BigDecimal(amount))
-    }
+    constructor(amount: String?, currencyCode: String?) : this(
+        BigDecimal(amount),
+        currencyCode
+    )
 
     /**
      * Constructs a new money amount given the numerator and denominator of the amount.
@@ -86,10 +107,10 @@ class Money : Number, Comparable<Money> {
      * @param denominator  Denominator as integer
      * @param currencyCode 3-character currency code string
      */
-    constructor(numerator: Long, denominator: Long, currencyCode: String) {
-        _amount = getBigDecimal(numerator, denominator)
-        setCommodity(currencyCode)
-    }
+    constructor(numerator: Long, denominator: Long, currencyCode: String) : this(
+        getBigDecimal(numerator, denominator),
+        currencyCode
+    )
 
     /**
      * Copy constructor.
@@ -97,10 +118,7 @@ class Money : Number, Comparable<Money> {
      *
      * @param money Money instance to be cloned
      */
-    constructor(money: Money) {
-        setCommodity(money.commodity!!)
-        setAmount(money.asBigDecimal())
-    }
+    constructor(money: Money) : this(money.asBigDecimal(), money.commodity)
 
     /**
      * Returns a new `Money` object the currency specified by `currency`
@@ -130,7 +148,7 @@ class Money : Number, Comparable<Money> {
      * @param currencyCode ISO 4217 currency code
      */
     private fun setCommodity(currencyCode: String) {
-        commodity = Commodity.getInstance(currencyCode)
+        commodity = Commodity.getInstance(currencyCode)!!
     }
 
     /**
@@ -144,11 +162,11 @@ class Money : Number, Comparable<Money> {
         get() = try {
             _amount.scaleByPowerOfTen(scale).longValueExact()
         } catch (e: ArithmeticException) {
-            val msg = "Currency " + commodity!!.currencyCode +
+            val msg = "Currency " + commodity.currencyCode +
                 " with scale " + scale +
-                " has amount " + _amount.toString()
+                " has amount " + _amount
             Timber.e(e, msg)
-            throw e
+            throw ArithmeticException(msg)
         }
 
     /**
@@ -159,10 +177,7 @@ class Money : Number, Comparable<Money> {
      * @return GnuCash format denominator
      */
     val denominator: Long
-        get() {
-            val scale = scale
-            return BigDecimal.ONE.scaleByPowerOfTen(scale).longValueExact()
-        }
+        get() = BigDecimal.ONE.scaleByPowerOfTen(scale).longValueExact()
 
     /**
      * Returns the scale (precision) used for the decimal places of this amount.
@@ -173,7 +188,7 @@ class Money : Number, Comparable<Money> {
      */
     private val scale: Int
         get() {
-            var scale = commodity!!.smallestFractionDigits
+            var scale = commodity.smallestFractionDigits
             if (scale < 0) {
                 scale = _amount.scale()
             }
@@ -191,7 +206,7 @@ class Money : Number, Comparable<Money> {
      * @return [BigDecimal] valure of amount in object
      */
     fun asBigDecimal(): BigDecimal {
-        return _amount.setScale(commodity!!.smallestFractionDigits, RoundingMode.HALF_EVEN)
+        return _amount.setScale(commodity.smallestFractionDigits, RoundingMode.HALF_EVEN)
     }
 
     /**
@@ -251,22 +266,14 @@ class Money : Number, Comparable<Money> {
         val symbol = if (commodity == Commodity.USD && locale != Locale.US) {
             "US$"
         } else {
-            commodity!!.symbol
+            commodity.symbol
         }
         val decimalFormatSymbols = (currencyFormat as DecimalFormat).decimalFormatSymbols
         decimalFormatSymbols.currencySymbol = symbol
         currencyFormat.decimalFormatSymbols = decimalFormatSymbols
-        currencyFormat.setMinimumFractionDigits(commodity!!.smallestFractionDigits)
-        currencyFormat.setMaximumFractionDigits(commodity!!.smallestFractionDigits)
-        return currencyFormat.format(toDouble())
-        /*
-// 	old currency formatting code
-		NumberFormat formatter = NumberFormat.getInstance(locale);
-		formatter.setMinimumFractionDigits(mCommodity.getSmallestFractionDigits());
-		formatter.setMaximumFractionDigits(mCommodity.getSmallestFractionDigits());
-		Currency currency = Currency.getInstance(mCommodity.getCurrencyCode());
-		return formatter.format(toDouble()) + " " + currency.getSymbol(locale);
-*/
+        currencyFormat.setMinimumFractionDigits(commodity.smallestFractionDigits)
+        currencyFormat.setMaximumFractionDigits(commodity.smallestFractionDigits)
+        return currencyFormat.format(_amount)
     }
 
     /**
@@ -285,7 +292,7 @@ class Money : Number, Comparable<Money> {
      * @param amount [BigDecimal] amount to be set
      */
     private fun setAmount(amount: BigDecimal) {
-        _amount = amount.setScale(commodity!!.smallestFractionDigits, roundingMode)
+        _amount = amount.setScale(commodity.smallestFractionDigits, roundingMode)
     }
 
     /**
@@ -334,7 +341,7 @@ class Money : Number, Comparable<Money> {
     operator fun div(divisor: Money): Money {
         if (commodity != divisor.commodity) throw CurrencyMismatchException()
         val bigD =
-            _amount.divide(divisor._amount, commodity!!.smallestFractionDigits, roundingMode)
+            _amount.divide(divisor._amount, commodity.smallestFractionDigits, roundingMode)
         return Money(bigD, commodity)
     }
 
@@ -417,7 +424,7 @@ class Money : Number, Comparable<Money> {
      * @return String representation of the amount (without currency) of the Money object
      */
     fun toPlainString(): String {
-        return _amount.setScale(commodity!!.smallestFractionDigits, roundingMode).toPlainString()
+        return _amount.setScale(commodity.smallestFractionDigits, roundingMode).toPlainString()
     }
 
     /**
@@ -484,6 +491,26 @@ class Money : Number, Comparable<Money> {
     val isAmountZero: Boolean
         get() = _amount.compareTo(BigDecimal.ZERO) == 0
 
+    constructor(parcel: Parcel) {
+        val amount: BigDecimal? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            parcel.readSerializable(javaClass.classLoader, BigDecimal::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            parcel.readSerializable() as? BigDecimal
+        }
+        setCommodity(parcel.readString()!!)
+        setAmount(amount!!)
+    }
+
+    override fun writeToParcel(parcel: Parcel, flags: Int) {
+        parcel.writeSerializable(_amount)
+        parcel.writeString(commodity.currencyCode)
+    }
+
+    override fun describeContents(): Int {
+        return 0
+    }
+
     inner class CurrencyMismatchException : IllegalArgumentException() {
         override val message: String
             get() = "Cannot perform operation on Money instances with different currencies"
@@ -533,8 +560,32 @@ class Money : Number, Comparable<Money> {
          */
         @JvmStatic
         fun createZeroInstance(currencyCode: String): Money {
-            val commodity = Commodity.getInstance(currencyCode)
+            val commodity = Commodity.getInstance(currencyCode) ?: Commodity.DEFAULT_COMMODITY
             return Money(BigDecimal.ZERO, commodity)
         }
+
+        @JvmField
+        val CREATOR = object : Parcelable.Creator<Money> {
+            override fun createFromParcel(parcel: Parcel): Money {
+                return Money(parcel)
+            }
+
+            override fun newArray(size: Int): Array<Money?> {
+                return arrayOfNulls(size)
+            }
+        }
+    }
+}
+
+fun Parcel.writeMoney(value: Money?, flags: Int) {
+    writeParcelable(value, flags)
+}
+
+fun Parcel.readMoney(): Money? {
+    val clazz = Money::class.java
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        readParcelable(clazz.classLoader, clazz)
+    } else {
+        readParcelable(clazz.classLoader)
     }
 }

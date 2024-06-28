@@ -17,6 +17,7 @@
 package org.gnucash.android.ui.settings;
 
 import static org.gnucash.android.app.IntentExtKt.takePersistableUriPermission;
+import static org.gnucash.android.util.ContentExtKt.getDocumentName;
 
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -28,18 +29,19 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Bundle;
 import android.text.TextUtils;
+import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Toast;
 
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.fragment.app.Fragment;
 import androidx.preference.CheckBoxPreference;
 import androidx.preference.ListPreference;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceFragmentCompat;
 import androidx.preference.PreferenceManager;
+import androidx.preference.TwoStatePreference;
 
 import com.dropbox.core.android.Auth;
 import com.google.android.gms.common.ConnectionResult;
@@ -59,14 +61,12 @@ import org.gnucash.android.export.Exporter;
 import org.gnucash.android.importer.ImportAsyncTask;
 import org.gnucash.android.ui.settings.dialog.OwnCloudDialogFragment;
 import org.gnucash.android.util.BackupManager;
+import org.joda.time.format.DateTimeFormat;
+import org.joda.time.format.DateTimeFormatter;
 
 import java.io.File;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
-import java.util.Date;
 
 import timber.log.Timber;
-
 
 /**
  * Fragment for displaying general preferences
@@ -101,7 +101,6 @@ public class BackupPreferenceFragment extends PreferenceFragmentCompat implement
      * Client for Google Drive Sync
      */
     public static GoogleApiClient mGoogleApiClient;
-
 
     @Override
     public void onCreatePreferences(Bundle bundle, String s) {
@@ -159,9 +158,9 @@ public class BackupPreferenceFragment extends PreferenceFragmentCompat implement
 
         pref = findPreference(getString(R.string.key_backup_location));
         pref.setOnPreferenceClickListener(this);
-        String defaultBackupLocation = BackupManager.getBookBackupFileUri(BooksDbAdapter.getInstance().getActiveBookUID());
+        Uri defaultBackupLocation = BackupManager.getBookBackupFileUri(GnuCashApplication.getActiveBookUID());
         if (defaultBackupLocation != null) {
-            pref.setSummary(Uri.parse(defaultBackupLocation).getAuthority());
+            pref.setSummary(getDocumentName(defaultBackupLocation, pref.getContext()));
         }
 
         pref = findPreference(getString(R.string.key_dropbox_sync));
@@ -182,11 +181,13 @@ public class BackupPreferenceFragment extends PreferenceFragmentCompat implement
         }
 
         if (key.equals(getString(R.string.key_backup_location))) {
-            Intent createIntent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
-            createIntent.setType("*/*");
-            createIntent.addCategory(Intent.CATEGORY_OPENABLE);
             String bookName = BooksDbAdapter.getInstance().getActiveBookDisplayName();
-            createIntent.putExtra(Intent.EXTRA_TITLE, Exporter.sanitizeFilename(bookName) + "_" + getString(R.string.label_backup_filename));
+            String fileName = Exporter.sanitizeFilename(bookName) + "_" + getString(R.string.label_backup_filename);
+
+            Intent createIntent = new Intent(Intent.ACTION_CREATE_DOCUMENT)
+                .setType(BackupManager.MIME_TYPE)
+                .addCategory(Intent.CATEGORY_OPENABLE)
+                .putExtra(Intent.EXTRA_TITLE, fileName);
             startActivityForResult(createIntent, REQUEST_BACKUP_FILE);
         }
 
@@ -201,9 +202,18 @@ public class BackupPreferenceFragment extends PreferenceFragmentCompat implement
         }
 
         if (key.equals(getString(R.string.key_create_backup))) {
-            boolean result = BackupManager.backupActiveBook(preference.getContext());
-            int msg = result ? R.string.toast_backup_successful : R.string.toast_backup_failed;
-            Snackbar.make(requireView(), msg, Snackbar.LENGTH_SHORT).show();
+            final Fragment fragment = this;
+            final Activity activity = requireActivity();
+            BackupManager.backupActiveBookAsync(activity, result -> {
+                int msg = result ? R.string.toast_backup_successful : R.string.toast_backup_failed;
+                if (fragment.isVisible()) {
+                    View view = fragment.getView();
+                    Snackbar.make(view, msg, Snackbar.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(activity, msg, Toast.LENGTH_LONG).show();
+                }
+                return null;
+            });
         }
 
         return false;
@@ -244,7 +254,7 @@ public class BackupPreferenceFragment extends PreferenceFragmentCompat implement
     public void toggleDropboxPreference(Preference pref) {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getActivity());
         String accessToken = prefs.getString(getString(R.string.key_dropbox_access_token), null);
-        ((CheckBoxPreference) pref).setChecked(accessToken != null);
+        ((TwoStatePreference) pref).setChecked(accessToken != null);
     }
 
     /**
@@ -254,7 +264,7 @@ public class BackupPreferenceFragment extends PreferenceFragmentCompat implement
      */
     public void toggleOwnCloudPreference(Preference pref) {
         SharedPreferences mPrefs = getActivity().getSharedPreferences(getString(R.string.owncloud_pref), Context.MODE_PRIVATE);
-        ((CheckBoxPreference) pref).setChecked(mPrefs.getBoolean(getString(R.string.owncloud_sync), false));
+        ((TwoStatePreference) pref).setChecked(mPrefs.getBoolean(getString(R.string.owncloud_sync), false));
     }
 
     /**
@@ -265,7 +275,7 @@ public class BackupPreferenceFragment extends PreferenceFragmentCompat implement
     public void toggleGoogleDrivePreference(Preference pref) {
         SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(getActivity());
         String appFolderId = sharedPreferences.getString(getString(R.string.key_google_drive_app_folder_id), null);
-        ((CheckBoxPreference) pref).setChecked(appFolderId != null);
+        ((TwoStatePreference) pref).setChecked(appFolderId != null);
     }
 
 
@@ -376,9 +386,9 @@ public class BackupPreferenceFragment extends PreferenceFragmentCompat implement
      */
     private void restoreBackup() {
         Timber.i("Opening GnuCash XML backups for restore");
-        final String bookUID = BooksDbAdapter.getInstance().getActiveBookUID();
+        final String bookUID = GnuCashApplication.getActiveBookUID();
 
-        final String defaultBackupFile = BackupManager.getBookBackupFileUri(bookUID);
+        final Uri defaultBackupFile = BackupManager.getBookBackupFileUri(bookUID);
         if (defaultBackupFile != null) {
             AlertDialog.Builder builder = new AlertDialog.Builder(getActivity())
                     .setTitle(R.string.title_confirm_restore_backup)
@@ -391,8 +401,8 @@ public class BackupPreferenceFragment extends PreferenceFragmentCompat implement
                     })
                     .setPositiveButton(R.string.btn_restore, new DialogInterface.OnClickListener() {
                         @Override
-                        public void onClick(DialogInterface dialogInterface, int i) {
-                            new ImportAsyncTask(getActivity()).execute(Uri.parse(defaultBackupFile));
+                        public void onClick(DialogInterface dialog, int which) {
+                            new ImportAsyncTask(getActivity()).execute(defaultBackupFile);
                         }
                     });
             builder.create().show();
@@ -416,11 +426,11 @@ public class BackupPreferenceFragment extends PreferenceFragmentCompat implement
 
 
         final ArrayAdapter<String> arrayAdapter = new ArrayAdapter<>(getActivity(), android.R.layout.select_dialog_singlechoice);
-        final DateFormat dateFormatter = SimpleDateFormat.getDateTimeInstance();
+        final DateTimeFormatter dateFormatter = DateTimeFormat.longDateTime();
         for (File backupFile : BackupManager.getBackupList(bookUID)) {
             long time = Exporter.getExportTime(backupFile.getName());
             if (time > 0)
-                arrayAdapter.add(dateFormatter.format(new Date(time)));
+                arrayAdapter.add(dateFormatter.print(time));
             else //if no timestamp was found in the filename, just use the name
                 arrayAdapter.add(backupFile.getName());
         }
@@ -477,7 +487,7 @@ public class BackupPreferenceFragment extends PreferenceFragmentCompat implement
                             .apply();
 
                     Preference pref = findPreference(getString(R.string.key_backup_location));
-                    pref.setSummary(backupFileUri.getAuthority());
+                    pref.setSummary(getDocumentName(backupFileUri, pref.getContext()));
                 }
                 break;
         }

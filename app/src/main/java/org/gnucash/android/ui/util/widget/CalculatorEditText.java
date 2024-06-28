@@ -18,23 +18,22 @@ package org.gnucash.android.ui.util.widget;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.inputmethodservice.KeyboardView;
-import android.os.Build;
 import android.text.Editable;
 import android.text.InputType;
+import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.View;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.XmlRes;
 import androidx.appcompat.widget.AppCompatEditText;
 
-import net.objecthunter.exp4j.Expression;
-import net.objecthunter.exp4j.ExpressionBuilder;
-
 import org.gnucash.android.R;
 import org.gnucash.android.model.Commodity;
+import org.gnucash.android.model.Money;
 import org.gnucash.android.ui.common.FormActivity;
 import org.gnucash.android.util.AmountParser;
 
@@ -54,22 +53,24 @@ import timber.log.Timber;
  * @author Ngewi Fet <ngewif@gmail.com>
  */
 public class CalculatorEditText extends AppCompatEditText {
+    @Nullable
     private CalculatorKeyboard mCalculatorKeyboard;
 
     private Commodity mCommodity = Commodity.DEFAULT_COMMODITY;
-    private Context mContext;
 
     /**
      * Flag which is set if the contents of this view have been modified
      */
     private boolean isContentModified = false;
+    private String originalText = "";
 
+    @XmlRes
     private int mCalculatorKeysLayout;
     private KeyboardView mCalculatorKeyboardView;
+    private final DecimalFormat formatter = (DecimalFormat) NumberFormat.getInstance(Locale.getDefault());
 
     public CalculatorEditText(Context context) {
-        super(context);
-        this.mContext = context;
+        super(context, null);
     }
 
     public CalculatorEditText(Context context, AttributeSet attrs) {
@@ -90,7 +91,6 @@ public class CalculatorEditText extends AppCompatEditText {
      * @param attrs   View attributes
      */
     private void init(Context context, AttributeSet attrs) {
-        this.mContext = context;
         TypedArray a = context.getTheme().obtainStyledAttributes(
                 attrs,
                 R.styleable.CalculatorEditText,
@@ -105,32 +105,42 @@ public class CalculatorEditText extends AppCompatEditText {
         addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {
-
             }
 
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {
-
             }
 
             @Override
             public void afterTextChanged(Editable s) {
-                isContentModified = true;
+                isContentModified = !TextUtils.equals(originalText, s);
             }
         });
-    }
 
-    public void bindListeners(CalculatorKeyboard calculatorKeyboard) {
-        mCalculatorKeyboard = calculatorKeyboard;
-        mContext = calculatorKeyboard.getContext();
         setOnFocusChangeListener(new View.OnFocusChangeListener() {
             @Override
             public void onFocusChange(View v, boolean hasFocus) {
                 if (hasFocus) {
                     setSelection(getText().length());
-                    mCalculatorKeyboard.showCustomKeyboard(v);
                 } else {
-                    mCalculatorKeyboard.hideCustomKeyboard();
+                    evaluate();
+                }
+            }
+        });
+
+        setValue(null, true);
+    }
+
+    public void bindListeners(final CalculatorKeyboard calculatorKeyboard) {
+        mCalculatorKeyboard = calculatorKeyboard;
+        setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            @Override
+            public void onFocusChange(View v, boolean hasFocus) {
+                if (hasFocus) {
+                    setSelection(getText().length());
+                    calculatorKeyboard.showCustomKeyboard(v);
+                } else {
+                    calculatorKeyboard.hideCustomKeyboard();
                     evaluate();
                 }
             }
@@ -141,7 +151,7 @@ public class CalculatorEditText extends AppCompatEditText {
             // by tapping on an edit box that already had focus (but that had the keyboard hidden).
             @Override
             public void onClick(View v) {
-                mCalculatorKeyboard.showCustomKeyboard(v);
+                calculatorKeyboard.showCustomKeyboard(v);
             }
         });
 
@@ -162,14 +172,17 @@ public class CalculatorEditText extends AppCompatEditText {
             }
         });
 
-        ((FormActivity) mContext).setOnBackListener(mCalculatorKeyboard);
+        Context context = getContext();
+        if (context instanceof FormActivity) {
+            ((FormActivity) context).setOnBackListener(calculatorKeyboard);
+        }
     }
 
     /**
      * Initializes listeners on the EditText
      */
     public void bindListeners(KeyboardView keyboardView) {
-        bindListeners(new CalculatorKeyboard(mContext, keyboardView, mCalculatorKeysLayout));
+        bindListeners(new CalculatorKeyboard(getContext(), keyboardView, mCalculatorKeysLayout));
     }
 
     /**
@@ -222,7 +235,7 @@ public class CalculatorEditText extends AppCompatEditText {
     /**
      * Sets the calculator keyboard to use for this EditText
      *
-     * @param keyboard Properly intialized calculator keyobard
+     * @param keyboard Properly initialized calculator keyboard
      */
     public void setCalculatorKeyboard(CalculatorKeyboard keyboard) {
         this.mCalculatorKeyboard = keyboard;
@@ -254,26 +267,25 @@ public class CalculatorEditText extends AppCompatEditText {
      */
     public String evaluate() {
         String amountString = getCleanString();
-        if (amountString.isEmpty())
-            return amountString;
-
-        ExpressionBuilder expressionBuilder = new ExpressionBuilder(amountString);
-        Expression expression;
-
-        try {
-            expression = expressionBuilder.build();
-        } catch (RuntimeException e) {
-            setError(getContext().getString(R.string.label_error_invalid_expression));
-            Timber.e(e, "Invalid expression: %s", amountString);
+        if (TextUtils.isEmpty(amountString)) {
             return "";
         }
 
-        if (expression != null && expression.validate().isValid()) {
-            BigDecimal result = new BigDecimal(expression.evaluate());
-            setValue(result);
+        BigDecimal amount = AmountParser.evaluate(amountString);
+        if (amount != null) {
+            try {
+                Money money = new Money(amount, getCommodity());
+                // Currently the numerator has a limit of 64 bits.
+                money.getNumerator();
+            } catch (ArithmeticException e) {
+                setError(getContext().getString(R.string.label_error_invalid_expression));
+                Timber.w(e, "Invalid expression: %s", amountString);
+                return "";
+            }
+            setValue(amount);
         } else {
             setError(getContext().getString(R.string.label_error_invalid_expression));
-            Timber.w("Expression is null or invalid: %s", expression);
+            Timber.w("Invalid expression: %s", amountString);
         }
         return getText().toString();
     }
@@ -294,6 +306,7 @@ public class CalculatorEditText extends AppCompatEditText {
      *
      * @return String with the amount in the EditText or empty string if there is no input
      */
+    @NonNull
     public String getCleanString() {
         return getText().toString().replaceAll(",", ".").trim();
     }
@@ -314,8 +327,7 @@ public class CalculatorEditText extends AppCompatEditText {
      * @return BigDecimal value
      */
     public @Nullable BigDecimal getValue() {
-        evaluate();
-        String text = getText().toString();
+        String text = evaluate();
         if (text.isEmpty()) {
             return null;
         }
@@ -335,16 +347,21 @@ public class CalculatorEditText extends AppCompatEditText {
      *
      * @param amount BigDecimal amount
      */
-    public void setValue(BigDecimal amount) {
-        BigDecimal newAmount = amount.setScale(mCommodity.getSmallestFractionDigits(), BigDecimal.ROUND_HALF_EVEN);
+    public void setValue(@Nullable BigDecimal amount) {
+        setValue(amount, false);
+    }
 
-        DecimalFormat formatter = (DecimalFormat) NumberFormat.getInstance(Locale.getDefault());
+    public void setValue(@Nullable BigDecimal amount, boolean isOriginal) {
         formatter.setMinimumFractionDigits(0);
         formatter.setMaximumFractionDigits(mCommodity.getSmallestFractionDigits());
         formatter.setGroupingUsed(false);
-        String resultString = formatter.format(newAmount.doubleValue());
+        String resultString = (amount != null) ? formatter.format(amount) : "";
 
-        super.setText(resultString);
+        if (isOriginal) {
+            originalText = resultString;
+        }
+
+        setText(resultString);
         setSelection(resultString.length());
     }
 }

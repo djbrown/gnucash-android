@@ -22,6 +22,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.view.MenuItem;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.widget.Toolbar;
 import androidx.fragment.app.Fragment;
@@ -64,7 +65,7 @@ public class FormActivity extends PasscodeLockActivity {
 
         //if a parameter was passed to open an account within a specific book, then switch
         String bookUID = getIntent().getStringExtra(UxArgument.BOOK_UID);
-        if (bookUID != null && !bookUID.equals(BooksDbAdapter.getInstance().getActiveBookUID())) {
+        if (bookUID != null && !bookUID.equals(GnuCashApplication.getActiveBookUID())) {
             BookUtils.activateBook(this, bookUID);
         }
 
@@ -89,31 +90,33 @@ public class FormActivity extends PasscodeLockActivity {
             getWindow().setStatusBarColor(GnuCashApplication.darken(colorCode));
         }
 
-        String formtypeString = intent.getStringExtra(UxArgument.FORM_TYPE);
+        Bundle args = intent.getExtras();
+        if (args == null) args = new Bundle();
+        String formtypeString = args.getString(UxArgument.FORM_TYPE);
         FormType formType = FormType.valueOf(formtypeString);
         switch (formType) {
             case ACCOUNT:
-                showAccountFormFragment(intent.getExtras());
+                showAccountFormFragment(args);
                 break;
 
             case TRANSACTION:
-                showTransactionFormFragment(intent.getExtras());
+                showTransactionFormFragment(args);
                 break;
 
             case EXPORT:
-                showExportFormFragment(null);
+                showExportFormFragment(args);
                 break;
 
             case SPLIT_EDITOR:
-                showSplitEditorFragment(intent.getExtras());
+                showSplitEditorFragment(args);
                 break;
 
             case BUDGET:
-                showBudgetFormFragment(intent.getExtras());
+                showBudgetFormFragment(args);
                 break;
 
             case BUDGET_AMOUNT_EDITOR:
-                showBudgetAmountEditorFragment(intent.getExtras());
+                showBudgetAmountEditorFragment(args);
                 break;
 
             default:
@@ -122,7 +125,7 @@ public class FormActivity extends PasscodeLockActivity {
     }
 
     @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         switch (item.getItemId()) {
             case android.R.id.home:
                 setResult(RESULT_CANCELED);
@@ -217,7 +220,7 @@ public class FormActivity extends PasscodeLockActivity {
     private void showFormFragment(Fragment fragment) {
         FragmentManager fragmentManager = getSupportFragmentManager();
         fragmentManager.beginTransaction()
-            .add(R.id.fragment_container, fragment)
+            .replace(R.id.fragment_container, fragment)
             .commit();
     }
 

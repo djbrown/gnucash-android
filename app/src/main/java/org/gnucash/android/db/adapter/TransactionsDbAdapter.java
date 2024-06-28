@@ -40,6 +40,7 @@ import org.gnucash.android.model.Split;
 import org.gnucash.android.model.Transaction;
 import org.gnucash.android.util.TimestampHelper;
 
+import java.io.IOException;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
@@ -429,8 +430,8 @@ public class TransactionsDbAdapter extends DatabaseAdapter<Transaction> {
 
         transaction.setTime(c.getLong(c.getColumnIndexOrThrow(TransactionEntry.COLUMN_TIMESTAMP)));
         transaction.setNote(c.getString(c.getColumnIndexOrThrow(TransactionEntry.COLUMN_NOTES)));
-        transaction.setExported(c.getInt(c.getColumnIndexOrThrow(TransactionEntry.COLUMN_EXPORTED)) == 1);
-        transaction.setTemplate(c.getInt(c.getColumnIndexOrThrow(TransactionEntry.COLUMN_TEMPLATE)) == 1);
+        transaction.setExported(c.getInt(c.getColumnIndexOrThrow(TransactionEntry.COLUMN_EXPORTED)) != 0);
+        transaction.setTemplate(c.getInt(c.getColumnIndexOrThrow(TransactionEntry.COLUMN_TEMPLATE)) != 0);
         String currencyCode = c.getString(c.getColumnIndexOrThrow(TransactionEntry.COLUMN_CURRENCY));
         transaction.setCommodity(mCommoditiesDbAdapter.getCommodity(currencyCode));
         transaction.setScheduledActionUID(c.getString(c.getColumnIndexOrThrow(TransactionEntry.COLUMN_SCHEDX_ACTION_UID)));
@@ -511,15 +512,12 @@ public class TransactionsDbAdapter extends DatabaseAdapter<Transaction> {
      * @return List of all scheduled transactions
      */
     public List<Transaction> getScheduledTransactionsForAccount(String accountUID) {
-        Cursor cursor = fetchScheduledTransactionsForAccount(accountUID);
-        List<Transaction> scheduledTransactions = new ArrayList<>();
-        try {
+        try (Cursor cursor = fetchScheduledTransactionsForAccount(accountUID)) {
+            List<Transaction> scheduledTransactions = new ArrayList<>();
             while (cursor.moveToNext()) {
                 scheduledTransactions.add(buildModelInstance(cursor));
             }
             return scheduledTransactions;
-        } finally {
-            cursor.close();
         }
     }
 
@@ -638,7 +636,7 @@ public class TransactionsDbAdapter extends DatabaseAdapter<Transaction> {
     /**
      * Returns the most recent `modified_at` timestamp of non-template transactions in the database
      *
-     * @return Last moodified time in milliseconds or current time if there is none in the database
+     * @return Last modified time in milliseconds or current time if there is none in the database
      */
     public Timestamp getTimestampOfLastModification() {
         Cursor cursor = mDb.query(TransactionEntry.TABLE_NAME,
@@ -710,5 +708,16 @@ public class TransactionsDbAdapter extends DatabaseAdapter<Transaction> {
             cursor.close();
         }
         return 0L;
+    }
+
+    @Override
+    public void close() throws IOException {
+        if (mSplitsDbAdapter != null) {
+            mSplitsDbAdapter.close();
+        }
+        if (mCommoditiesDbAdapter != null) {
+            mCommoditiesDbAdapter.close();
+        }
+        super.close();
     }
 }

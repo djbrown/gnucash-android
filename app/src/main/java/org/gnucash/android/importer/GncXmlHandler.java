@@ -60,7 +60,6 @@ import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collections;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -278,7 +277,7 @@ public class GncXmlHandler extends DefaultHandler {
 
     private BudgetsDbAdapter mBudgetsDbAdapter;
     private Book mBook;
-    private SQLiteDatabase mainDb;
+    private SQLiteDatabase mDB;
 
     /**
      * Creates a handler for handling XML stream events when parsing the XML backup file
@@ -294,14 +293,14 @@ public class GncXmlHandler extends DefaultHandler {
         mBook = new Book();
 
         DatabaseHelper databaseHelper = new DatabaseHelper(GnuCashApplication.getAppContext(), mBook.getUID());
-        mainDb = databaseHelper.getWritableDatabase();
-        mTransactionsDbAdapter = new TransactionsDbAdapter(mainDb, new SplitsDbAdapter(mainDb));
-        mAccountsDbAdapter = new AccountsDbAdapter(mainDb, mTransactionsDbAdapter);
-        RecurrenceDbAdapter recurrenceDbAdapter = new RecurrenceDbAdapter(mainDb);
-        mScheduledActionsDbAdapter = new ScheduledActionDbAdapter(mainDb, recurrenceDbAdapter);
-        mCommoditiesDbAdapter = new CommoditiesDbAdapter(mainDb);
-        mPricesDbAdapter = new PricesDbAdapter(mainDb);
-        mBudgetsDbAdapter = new BudgetsDbAdapter(mainDb, new BudgetAmountsDbAdapter(mainDb), recurrenceDbAdapter);
+        mDB = databaseHelper.getWritableDatabase();
+        mTransactionsDbAdapter = new TransactionsDbAdapter(mDB, new SplitsDbAdapter(mDB));
+        mAccountsDbAdapter = new AccountsDbAdapter(mDB, mTransactionsDbAdapter);
+        RecurrenceDbAdapter recurrenceDbAdapter = new RecurrenceDbAdapter(mDB);
+        mScheduledActionsDbAdapter = new ScheduledActionDbAdapter(mDB, recurrenceDbAdapter);
+        mCommoditiesDbAdapter = new CommoditiesDbAdapter(mDB);
+        mPricesDbAdapter = new PricesDbAdapter(mDB);
+        mBudgetsDbAdapter = new BudgetsDbAdapter(mDB, new BudgetAmountsDbAdapter(mDB), recurrenceDbAdapter);
 
 
         mContent = new StringBuilder();
@@ -538,13 +537,9 @@ public class GncXmlHandler extends DefaultHandler {
                     String color = characterString.trim();
                     //Gnucash exports the account color in format #rrrgggbbb, but we need only #rrggbb.
                     //so we trim the last digit in each block, doesn't affect the color much
-                    if (!color.equals("Not Set")) {
-                        // avoid known exception, printStackTrace is very time consuming
-                        if (!Pattern.matches(ACCOUNT_COLOR_HEX_REGEX, color))
-                            color = "#" + color.replaceAll(".(.)?", "$1").replace("null", "");
+                    if (mAccount != null) {
                         try {
-                            if (mAccount != null)
-                                mAccount.setColor(color);
+                            mAccount.setColor(color);
                         } catch (IllegalArgumentException ex) {
                             //sometimes the color entry in the account file is "Not set" instead of just blank. So catch!
                             Timber.e(ex, "Invalid color code '" + color + "' for account " + mAccount.getName());
@@ -557,16 +552,16 @@ public class GncXmlHandler extends DefaultHandler {
                 } else if (mIsNote) {
                     if (mTransaction != null) {
                         mTransaction.setNote(characterString);
-                        mIsNote = false;
                     }
+                    mIsNote = false;
                 } else if (mInDefaultTransferAccount) {
                     mAccount.setDefaultTransferAccountUID(characterString);
                     mInDefaultTransferAccount = false;
                 } else if (mInExported) {
                     if (mTransaction != null) {
                         mTransaction.setExported(Boolean.parseBoolean(characterString));
-                        mInExported = false;
                     }
+                    mInExported = false;
                 } else if (mInTemplates && mInSplitAccountSlot) {
                     mSplit.setAccountUID(characterString);
                     mInSplitAccountSlot = false;
@@ -582,7 +577,7 @@ public class GncXmlHandler extends DefaultHandler {
                             mBudgetAmount.setAmount(new Money(bigDecimal, Commodity.DEFAULT_COMMODITY));
                         } catch (ParseException e) {
                             mBudgetAmount.setAmount(Money.getZeroInstance()); //just put zero, in case it was a formula we couldnt parse
-                            e.printStackTrace();
+                            Timber.e(e);
                         } finally {
                             mBudget.addBudgetAmount(mBudgetAmount);
                         }
@@ -607,16 +602,16 @@ public class GncXmlHandler extends DefaultHandler {
             case GncXmlHelper.TAG_TS_DATE:
                 try {
                     if (mIsDatePosted && mTransaction != null) {
-                        mTransaction.setTime(GncXmlHelper.parseDate(characterString));
+                        mTransaction.setTime(GncXmlHelper.parseDateTime(characterString));
                         mIsDatePosted = false;
                     }
                     if (mIsDateEntered && mTransaction != null) {
-                        Timestamp timestamp = new Timestamp(GncXmlHelper.parseDate(characterString));
+                        Timestamp timestamp = new Timestamp(GncXmlHelper.parseDateTime(characterString));
                         mTransaction.setCreatedTimestamp(timestamp);
                         mIsDateEntered = false;
                     }
                     if (mPrice != null) {
-                        mPrice.setDate(new Timestamp(GncXmlHelper.parseDate(characterString)));
+                        mPrice.setDate(new Timestamp(GncXmlHelper.parseDateTime(characterString)));
                     }
                 } catch (ParseException e) {
                     String message = "Unable to parse transaction time - " + characterString;
@@ -741,7 +736,7 @@ public class GncXmlHandler extends DefaultHandler {
                 break;
             case GncXmlHelper.TAG_GDATE:
                 try {
-                    long date = GncXmlHelper.DATE_FORMATTER.parse(characterString).getTime();
+                    long date = GncXmlHelper.parseDate(characterString);
                     if (mIsScheduledStart && mScheduledAction != null) {
                         mScheduledAction.setCreatedTimestamp(new Timestamp(date));
                         mIsScheduledStart = false;
@@ -1010,7 +1005,7 @@ public class GncXmlHandler extends DefaultHandler {
         } finally {
             mAccountsDbAdapter.enableForeignKey(true);
             mAccountsDbAdapter.endTransaction();
-            mainDb.close(); //close it after import
+            mDB.close(); //close it after import
         }
     }
 
@@ -1120,7 +1115,7 @@ public class GncXmlHandler extends DefaultHandler {
      */
     private void setMinimalScheduledActionByDays() {
         Calendar calendar = Calendar.getInstance();
-        calendar.setTime(new Date(mScheduledAction.getStartTime()));
+        calendar.setTimeInMillis(mScheduledAction.getStartTime());
         mScheduledAction.getRecurrence().setByDays(
                 Collections.singletonList(calendar.get(Calendar.DAY_OF_WEEK)));
     }
